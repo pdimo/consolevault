@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+.git
+.github
+terraform
+*.tfstate*
+.terraform
+terraform.tfvars
+**/*.log
+.DS_Store

@@ -1,0 +1,32 @@
+# Node / Turborepo
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+
+# Env / secrets — NEVER commit
+.env
+.env.*
+*.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars          # real values — commit ONLY terraform.tfvars.example
+
+# Google credentials — NEVER commit
+*service-account*.json
+*-key.json
+gcp-key*.json
+credentials.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

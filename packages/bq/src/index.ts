@@ -1,0 +1,8 @@
+/**
+ * `@consolevault/bq` — BigQuery schema + (future) write helpers.
+ *
+ * Stage 0 exports schema constants only. Delete-then-load partition write helpers
+ * (SPEC §6.3) land in Stage 2.
+ */
+
+export * from './schema.js';

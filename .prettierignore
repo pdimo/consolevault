@@ -1,0 +1,12 @@
+node_modules
+dist
+.turbo
+coverage
+pnpm-lock.yaml
+.terraform
+*.tfstate
+
+# Source-of-truth docs and license — do not reflow.
+SPEC.md
+CLAUDE.md
+LICENSE
