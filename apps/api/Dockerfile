@@ -10,8 +10,9 @@ WORKDIR /repo
 # Install with the full workspace so workspace deps resolve.
 COPY . .
 RUN pnpm install --frozen-lockfile
-# Build the api and its workspace dependencies (topological).
-RUN pnpm --filter @consolevault/api... run build
+# Build the whole workspace so the api AND the web SPA (apps/web/dist, which the api serves)
+# are present in the image.
+RUN pnpm run build
 
 FROM node:20-slim AS runner
 ENV NODE_ENV=production

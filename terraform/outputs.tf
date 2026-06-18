@@ -46,3 +46,8 @@ output "api_url" {
   value       = google_cloud_run_v2_service.api.uri
   description = "Cloud Run URL of the control-plane API (append /health)."
 }
+
+output "collector_url" {
+  value       = google_cloud_run_v2_service.collector.uri
+  description = "Cloud Run URL of the collector worker (POST /collect)."
+}

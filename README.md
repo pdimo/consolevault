@@ -66,6 +66,13 @@ terraform apply       # creates the empty, permissioned project
 
 `bq_location` (BigQuery + Firestore) is **permanent** and cannot be changed later — choose once.
 
+## Authentication
+
+Connecting Google accounts (OAuth) or service accounts is a one-time setup that differs by your
+situation (Workspace org vs standalone project vs service-account-only). See
+**[docs/AUTH.md](./docs/AUTH.md)** for the full per-scenario guide. Credentials are written
+**only** to Secret Manager — never to disk, env files, or this repo.
+
 ## License
 
 [Apache 2.0](./LICENSE).

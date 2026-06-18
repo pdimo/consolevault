@@ -50,8 +50,13 @@ export interface Account {
   id: string;
   type: AccountType;
   displayName: string;
-  /** Secret Manager resource name, e.g. `projects/<p>/secrets/<id>/versions/latest`. Never a token. */
-  secretRef: string;
+  /** Authorized Google account email (OAuth) or service-account email. */
+  email?: string;
+  /**
+   * Secret Manager resource name, e.g. `projects/<p>/secrets/<id>`. Never a token.
+   * Optional: a service account reached via impersonation has no stored secret.
+   */
+  secretRef?: string;
   tokenHealth: TokenHealth;
   createdAt: string; // ISO 8601
   lastSuccessAt?: string; // ISO 8601
@@ -88,6 +93,10 @@ export interface Property {
   permissionLevel?: string;
   config: CollectionConfig;
   groupIds?: string[];
+  /** First time discovery saw this property (ISO 8601). */
+  discoveredAt?: string;
+  /** Most recent discovery run that still listed this property (ISO 8601). */
+  lastSeenAt?: string;
 }
 
 /** An app-level property group (no native GSC grouping exists — SPEC §4, §6.4). */

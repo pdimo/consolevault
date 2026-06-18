@@ -109,3 +109,15 @@ resource "google_storage_bucket_iam_member" "collector_staging" {
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.collector.email}"
 }
+
+# ---------------------------------------------------------------------------
+# Service-account impersonation (Stage 1).
+# ---------------------------------------------------------------------------
+# The API impersonates the GSC-facing collector SA to discover properties for
+# service-account accounts (clients add sa-collector's email to their property).
+# Stage 3's discover worker will run AS sa-collector directly and won't need this.
+resource "google_service_account_iam_member" "api_impersonate_collector" {
+  service_account_id = google_service_account.collector.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.api.email}"
+}

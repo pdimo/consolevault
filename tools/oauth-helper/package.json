@@ -1,15 +1,10 @@
 {
-  "name": "@consolevault/gsc",
+  "name": "@consolevault/oauth-helper",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
+  "bin": {
+    "consolevault-auth": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -18,8 +13,10 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@consolevault/gsc": "workspace:*",
+    "@consolevault/store": "workspace:*",
     "@consolevault/types": "workspace:*",
-    "@googleapis/webmasters": "^4.0.0",
-    "google-auth-library": "^10.5.0"
+    "google-auth-library": "^10.5.0",
+    "open": "^10.1.0"
   }
 }

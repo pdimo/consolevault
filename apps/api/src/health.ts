@@ -12,5 +12,5 @@ export interface HealthResponse {
 }
 
 export function getHealth(): HealthResponse {
-  return { status: 'ok', service: 'consolevault-api', stage: 0 };
+  return { status: 'ok', service: 'consolevault-api', stage: 2 };
 }

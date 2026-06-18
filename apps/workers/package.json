@@ -8,12 +8,18 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@consolevault/bq": "workspace:*",
     "@consolevault/config": "workspace:*",
     "@consolevault/gsc": "workspace:*",
-    "@consolevault/types": "workspace:*"
+    "@consolevault/store": "workspace:*",
+    "@consolevault/types": "workspace:*",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0"
   }
 }

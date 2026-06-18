@@ -39,6 +39,12 @@ variable "api_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
+variable "worker_image" {
+  type        = string
+  description = "Container image for the collector worker Cloud Run service. Built and pushed by scripts/build-push.sh before apply."
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
 # Firestore database location for the chosen bq_location. For multi-regions the Firestore
 # location id differs from the BigQuery name (US -> nam5, EU -> eur3); single regions match.
 locals {

@@ -18,6 +18,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@consolevault/types": "workspace:*"
+    "@consolevault/types": "workspace:*",
+    "@google-cloud/bigquery": "^7.9.0",
+    "@google-cloud/storage": "^7.14.0"
   }
 }

@@ -23,6 +23,8 @@ terraform.tfvars          # real values — commit ONLY terraform.tfvars.example
 *-key.json
 gcp-key*.json
 credentials.json
+client_secret*.json
+*oauth*client*.json
 
 # OS / editor
 .DS_Store
