@@ -44,12 +44,88 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "STAGING_BUCKET"
         value = google_storage_bucket.staging.name
       }
+      env {
+        name  = "ADMIN_EMAILS"
+        value = join(",", var.admin_emails)
+      }
+      env {
+        name = "SESSION_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.session.secret_id
+            version = "latest"
+          }
+        }
+      }
     }
   }
 
   depends_on = [
     google_project_service.enabled,
     google_project_iam_member.bindings,
+    google_secret_manager_secret_version.session,
+  ]
+}
+
+# Stage 4: the management UI is public-ingress but app-gated by Google Sign-In (admin allowlist).
+resource "google_cloud_run_v2_service_iam_member" "api_public" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Orchestrator worker (Stage 3). SAME worker image as the collector, but runs as sa-workflows
+# (cloudtasks + datastore + secretAccessor) and serves /discover-all, /reconcile, /enqueue.
+# The daily Workflow calls it; it enqueues Cloud Tasks that target the collector.
+resource "google_cloud_run_v2_service" "orchestrator" {
+  project  = var.project_id
+  name     = "${var.app_name}-orchestrator"
+  location = var.region
+
+  deletion_protection = false
+  ingress             = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    service_account = google_service_account.workflows.email
+    # discover + reconcile can iterate many properties/days.
+    timeout = "1800s"
+
+    containers {
+      image = var.worker_image
+
+      ports {
+        container_port = 8080
+      }
+
+      env {
+        name  = "GCP_PROJECT_ID"
+        value = var.project_id
+      }
+      env {
+        name  = "GCP_REGION"
+        value = var.region
+      }
+      env {
+        name  = "BQ_LOCATION"
+        value = var.bq_location
+      }
+      env {
+        name  = "STAGING_BUCKET"
+        value = google_storage_bucket.staging.name
+      }
+      env {
+        name  = "COLLECTOR_URL"
+        value = google_cloud_run_v2_service.collector.uri
+      }
+    }
+  }
+
+  depends_on = [
+    google_project_service.enabled,
+    google_project_iam_member.bindings,
+    google_cloud_run_v2_service.collector,
   ]
 }
 

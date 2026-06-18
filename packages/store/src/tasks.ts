@@ -46,4 +46,23 @@ export class TaskRepository {
     const snap = await this.col().get();
     return snap.docs.map((d) => d.data() as Task);
   }
+
+  /** Tasks in a given status (single-field equality, auto-indexed). */
+  async listByStatus(status: TaskStatus): Promise<Task[]> {
+    const snap = await this.col().where('status', '==', status).get();
+    return snap.docs.map((d) => d.data() as Task);
+  }
+
+  /** All tasks for a property (single-field equality, auto-indexed). */
+  async listByProperty(propertyId: string): Promise<Task[]> {
+    const snap = await this.col().where('propertyId', '==', propertyId).get();
+    return snap.docs.map((d) => d.data() as Task);
+  }
+
+  /** Mark a task queued (set queuedAt). */
+  async markQueued(id: string): Promise<void> {
+    await this.col()
+      .doc(id)
+      .set({ status: 'queued', queuedAt: new Date().toISOString() }, { merge: true });
+  }
 }

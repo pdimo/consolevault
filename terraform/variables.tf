@@ -27,6 +27,12 @@ variable "app_name" {
   default     = "consolevault"
 }
 
+variable "admin_emails" {
+  type        = list(string)
+  description = "Google account emails allowed to sign in to the management UI (Stage 4)."
+  default     = []
+}
+
 variable "default_partition_expiry_days" {
   type        = number
   description = "Default BigQuery table/partition expiry in days. null = never expire."

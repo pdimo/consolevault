@@ -73,6 +73,13 @@ situation (Workspace org vs standalone project vs service-account-only). See
 **[docs/AUTH.md](./docs/AUTH.md)** for the full per-scenario guide. Credentials are written
 **only** to Secret Manager — never to disk, env files, or this repo.
 
+## Data freshness
+
+GSC days are labeled in **Pacific Time**, and recent days are _fresh_ (still being processed and
+subject to change) before Google finalizes them. ConsoleVault collects with `dataState=all`, locks
+a day once it's final, and re-collects fresh days automatically until they finalize — there is no
+"look-back window." See **[docs/DATA-FRESHNESS.md](./docs/DATA-FRESHNESS.md)**.
+
 ## License
 
 [Apache 2.0](./LICENSE).

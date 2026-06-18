@@ -13,3 +13,6 @@ app_name     = "consolevault"
 
 # Optional: default BigQuery table/partition expiry in days (null = never expire).
 default_partition_expiry_days = null
+
+# Stage 4: Google account email(s) allowed to sign in to the management UI.
+admin_emails = ["you@example.com"]

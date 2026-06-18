@@ -9,6 +9,8 @@ export const COLLECTIONS = {
   accounts: 'accounts',
   properties: 'properties',
   tasks: 'tasks',
+  groups: 'groups',
+  settings: 'settings',
 } as const;
 
 let db: Firestore | undefined;

@@ -142,7 +142,7 @@ COLLECTOR (one task = property × aggregation × type × day):
   startRow = 0
   loop:
     body = build_query(property, aggregation, type, date, startRow,
-                       rowLimit=25000, dataState="final")   # PT date
+                       rowLimit=25000, dataState="all")   # PT date; "all" → fresh + first_incomplete_date
     resp = searchanalytics.query(body)
     rows += resp.rows
     startRow += 25000
@@ -179,7 +179,7 @@ task_logs.attempts                    append-only, one row per task attempt
 
 ### 6.2 Shared row schema (nullable columns; one shape across types/aggregations)
 
-`data_date` (DATE), `property` (STRING), `property_type`, `search_type` (web|image|…|discover|googleNews), `aggregation` (byProperty|byPage|totals), `query` (NULLABLE — absent for totals & Discover), `page` (NULLABLE — only byPage), `country`, `device`, `search_appearance` (NULLABLE), `clicks`, `impressions`, `ctr`, `position`, `is_anonymized` (BOOL), `row_hash` (STRING), `collected_at` (TIMESTAMP), `data_state` (final).
+`data_date` (DATE), `property` (STRING), `property_type`, `search_type` (web|image|…|discover|googleNews), `aggregation` (byProperty|byPage|totals), `query` (NULLABLE — absent for totals & Discover), `page` (NULLABLE — only byPage), `country`, `device`, `search_appearance` (NULLABLE), `clicks`, `impressions`, `ctr`, `position`, `is_anonymized` (BOOL), `row_hash` (STRING), `collected_at` (TIMESTAMP), `data_state` (final|fresh — per `first_incomplete_date`, see §8).
 
 Nullable-shared (not per-type schemas) keeps wildcard views trivial and absorbs the fact that Discover/GoogleNews lack `query` and don't support `byProperty`.
 
@@ -232,13 +232,14 @@ The job is a **reconciliation**, not a one-shot backfill — backfill, daily inc
 
 **Per-(property × type × aggregation × day) coverage.** Coverage is tracked per cell, not per day — a day can be complete for `web/byProperty` but pending for `web/byPage`. This is what the heatmap shows.
 
-**Three terminal states, not two.** The API **omits** days with no traffic (returns nothing, not zero rows). Treating "nothing" as "failed" → permanent false gaps + infinite re-requests. States:
-- `pending`
-- `collected_with_data`
-- `collected_no_data` (terminal — confirmed empty via the presence-check: a cheap `[date]`-grouped query over the window tells you which days truly have data)
+**Finality is data-driven, not time-driven.** Day collection uses **`dataState=all`** (fresh rows are stored, labelled); the finality boundary is **`metadata.first_incomplete_date`** (PT), fetched via one cheap multi-day `[date]` range probe for recent days only (the API omits `metadata` on single-day queries; old days skip the probe). A day `D` is **final** iff `D < first_incomplete_date` (locked, never re-collected); otherwise **fresh** (Google may still revise it). Each row is stamped `data_state` = `final|fresh`. States:
+- `pending` / `queued` (non-terminal)
+- `collected_fresh` (**non-terminal** — collected while fresh; re-collected each run until it finalizes)
+- `collected_with_data` (terminal/**locked** — final + rows)
+- `collected_no_data` (terminal/**locked** — final + no traffic; the API omits no-traffic days, so "nothing" on a **final** day means truly empty)
 - `error` (retryable; dead-letter after N attempts)
 
-**Look-back window.** Beyond `offset_days`, periodically re-collect the last ~30 days even if already complete (configurable) to absorb Google restatements — delete-then-load makes this safe.
+**No look-back window.** There is deliberately no fixed re-collection window. The planner re-collects any day that isn't locked-final; `collected_fresh` days self-resolve to final within a few days as `first_incomplete_date` advances. This replaces the old (undocumented) "~30-day restatement" window — delete-then-load makes the fresh→final replacement safe. See [`docs/DATA-FRESHNESS.md`](docs/DATA-FRESHNESS.md).
 
 The planner each run: `expected_days(window, PT) − cells already terminal` = the gaps to enqueue. New property and year-old property run identical logic.
 

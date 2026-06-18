@@ -103,6 +103,31 @@ No consent screen. Each client grants a service account read access to their pro
 `your-gcp-project-id` is a standalone project with no Workspace org, so it uses **Scenario B
 (External + In production)**. Internal is unavailable here.
 
+## Browser sign-in & in-UI account connect (Stage 4)
+
+The management UI uses **Google Sign-In** (no more `gcloud run services proxy`) and an in-UI
+**Connect Google account** button. Both use one **Web** OAuth client (separate from the Desktop
+client the CLI helper uses, because refresh tokens are client-specific).
+
+One-time setup after deploying (the `api` Cloud Run URL must exist first):
+
+1. **APIs & Services → Credentials → Create OAuth client ID → Application type: Web application.**
+   - **Authorized JavaScript origins:** `https://<api-cloud-run-url>`
+   - **Authorized redirect URIs:** `https://<api-cloud-run-url>/api/oauth/callback`
+   - On the consent screen, ensure the scopes include `openid`, `email`, and
+     `https://www.googleapis.com/auth/webmasters.readonly`.
+2. **Download JSON** and store it in Secret Manager:
+   ```bash
+   GCP_PROJECT_ID=<project> node tools/oauth-helper/dist/index.js add-web-client --client-json <path>
+   ```
+3. Set `admin_emails = ["you@example.com"]` in `terraform.tfvars` (the Google account(s) allowed to
+   sign in), then `terraform apply`.
+4. Open `https://<api-cloud-run-url>`, sign in with an admin Google account, and click **Connect
+   Google account** to add GSC accounts from the browser.
+
+The Cloud Run `api` service becomes public-ingress, but every API route is gated by the signed
+admin session — only the configured admin emails can sign in.
+
 ## Token health
 
 ConsoleVault checks each OAuth account's token health (valid / expires-soon / broken / revoked)

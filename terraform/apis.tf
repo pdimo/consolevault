@@ -9,6 +9,7 @@ locals {
     "cloudtasks.googleapis.com",
     "workflows.googleapis.com",
     "cloudscheduler.googleapis.com",
+    "workflowexecutions.googleapis.com",
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
     "logging.googleapis.com",

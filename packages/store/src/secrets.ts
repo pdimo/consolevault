@@ -10,7 +10,10 @@ import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 
 /** Canonical secret ids (SPEC §3 / plan §3). */
 export const SECRET_IDS = {
+  /** Desktop OAuth client (CLI helper, loopback flow). */
   oauthClientConfig: 'oauth-client-config',
+  /** Web OAuth client (in-UI connect flow + Google Sign-In). */
+  oauthWebClientConfig: 'oauth-web-client-config',
   oauthRefresh: (accountId: string): string => `oauth-refresh-${accountId}`,
   saKey: (accountId: string): string => `sa-key-${accountId}`,
 } as const;

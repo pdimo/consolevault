@@ -51,3 +51,13 @@ output "collector_url" {
   value       = google_cloud_run_v2_service.collector.uri
   description = "Cloud Run URL of the collector worker (POST /collect)."
 }
+
+output "orchestrator_url" {
+  value       = google_cloud_run_v2_service.orchestrator.uri
+  description = "Cloud Run URL of the orchestrator worker (/discover-all, /reconcile, /enqueue)."
+}
+
+output "workflow_name" {
+  value       = google_workflows_workflow.daily.name
+  description = "Daily Cloud Workflow name."
+}

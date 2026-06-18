@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildQuery,
   dimensionsFor,
+  isDayFinal,
   mapRowsToGscRows,
   type SearchAnalyticsQueryParams,
 } from './client.js';
@@ -46,8 +47,21 @@ describe('buildQuery', () => {
       aggregationType: 'byProperty',
       rowLimit: 25000,
       startRow: 0,
-      dataState: 'final',
+      dataState: 'all',
     });
+  });
+});
+
+describe('isDayFinal', () => {
+  it('is final when the day precedes first_incomplete_date', () => {
+    expect(isDayFinal('2026-06-10', '2026-06-15')).toBe(true);
+  });
+  it('is fresh when the day is on/after first_incomplete_date', () => {
+    expect(isDayFinal('2026-06-15', '2026-06-15')).toBe(false);
+    expect(isDayFinal('2026-06-16', '2026-06-15')).toBe(false);
+  });
+  it('is final when there is no incomplete boundary', () => {
+    expect(isDayFinal('2026-06-15', null)).toBe(true);
   });
 });
 
@@ -57,6 +71,7 @@ describe('mapRowsToGscRows', () => {
       [{ keys: ['shoes', 'AUS', 'MOBILE'], clicks: 5, impressions: 100, ctr: 0.05, position: 3.2 }],
       base,
       '2026-06-18T00:00:00.000Z',
+      true,
     );
     expect(rows[0]).toMatchObject({
       data_date: '2026-06-15',

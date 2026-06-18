@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, isIsoDate, newestFinalizedDay, todayPacific } from './dates.js';
+import {
+  addDays,
+  daysInRange,
+  isIsoDate,
+  newestFinalizedDay,
+  subtractMonths,
+  todayPacific,
+  windowFor,
+} from './dates.js';
 
 describe('pacific date utilities', () => {
   it('reports the PT calendar day for a known instant', () => {
@@ -23,5 +31,25 @@ describe('pacific date utilities', () => {
     expect(isIsoDate('2026-13-01')).toBe(false);
     expect(isIsoDate('2026-6-1')).toBe(false);
     expect(isIsoDate('not-a-date')).toBe(false);
+  });
+
+  it('subtractMonths steps whole months back', () => {
+    expect(subtractMonths('2026-06-18', 16)).toBe('2025-02-18');
+    expect(subtractMonths('2026-01-15', 1)).toBe('2025-12-15');
+  });
+
+  it('daysInRange is inclusive and ascending', () => {
+    expect(daysInRange('2026-06-13', '2026-06-15')).toEqual([
+      '2026-06-13',
+      '2026-06-14',
+      '2026-06-15',
+    ]);
+    expect(daysInRange('2026-06-15', '2026-06-13')).toEqual([]);
+  });
+
+  it('windowFor: newest = today(PT)-offset, oldest = today-backfillMonths, clamped to 16mo', () => {
+    const now = new Date('2026-06-18T18:00:00Z');
+    expect(windowFor(3, 1, now)).toEqual({ oldest: '2026-05-18', newest: '2026-06-15' });
+    expect(windowFor(3, 240, now).oldest).toBe('2025-02-18');
   });
 });

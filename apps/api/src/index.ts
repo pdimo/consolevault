@@ -1,21 +1,25 @@
 /**
  * ConsoleVault control-plane API (Cloud Run).
  *
- * Stage 1: `/health`, the `/api/*` control-plane routes (accounts + property discovery), and it
- * serves the built SPA (`apps/web`) when present in the image. The service is IAM-private; the
- * admin reaches it via `gcloud run services proxy`. No app-level login yet (Stage 4).
+ * Stage 4: public-ingress but app-gated by Google Sign-In (single admin). Serves the management
+ * SPA + the `/api/*` control plane (accounts, properties, coverage, doctor, jobs, groups, settings,
+ * OAuth connect). Collector/orchestrator stay IAM-private.
  */
 
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import type { FastifyError } from 'fastify';
+import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { getHealth } from './health.js';
 import { registerApiRoutes } from './routes.js';
+import { authHook, registerAuthRoutes } from './auth.js';
+import { registerOAuthRoutes } from './oauth.js';
+import { registerManagementRoutes } from './management.js';
 import { HttpError } from './errors.js';
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, trustProxy: true });
 
 app.setErrorHandler((err: FastifyError, _req, reply) => {
   const status = err instanceof HttpError ? err.status : (err.statusCode ?? 500);
@@ -23,10 +27,19 @@ app.setErrorHandler((err: FastifyError, _req, reply) => {
   void reply.code(status).send({ error: err.message });
 });
 
-app.get('/health', async () => getHealth());
-registerApiRoutes(app);
+await app.register(fastifyCookie);
 
-// Serve the built SPA if it was bundled into the image; SPA fallback for client routes.
+// Enforce a valid admin session on protected /api routes (public: /health, /api/config,
+// /api/auth/*, static assets).
+app.addHook('onRequest', authHook);
+
+app.get('/health', async () => getHealth());
+registerAuthRoutes(app);
+registerOAuthRoutes(app);
+registerApiRoutes(app);
+registerManagementRoutes(app);
+
+// Serve the built SPA if bundled into the image; SPA fallback for client routes.
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 if (existsSync(webDist)) {
   await app.register(fastifyStatic, { root: webDist });

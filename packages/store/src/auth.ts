@@ -19,9 +19,9 @@ export async function authClientForAccount(
   secretStore: SecretStore,
 ): Promise<AuthClient> {
   if (account.type === 'oauth') {
-    const config = JSON.parse(
-      await secretStore.getSecret(SECRET_IDS.oauthClientConfig),
-    ) as OAuthClientConfig;
+    // Refresh with the client that minted the token (Desktop helper vs in-UI web flow).
+    const clientSecretId = account.oauthClientSecretId ?? SECRET_IDS.oauthClientConfig;
+    const config = JSON.parse(await secretStore.getSecret(clientSecretId)) as OAuthClientConfig;
     const refreshToken = await secretStore.getSecret(SECRET_IDS.oauthRefresh(account.id));
     return oauthClientFromRefreshToken(config, refreshToken);
   }

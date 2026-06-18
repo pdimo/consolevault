@@ -1,0 +1,35 @@
+# ConsoleVault daily DAG (SPEC §5.1). Thin control flow: discover -> reconcile -> enqueue.
+# All heavy logic lives in the orchestrator worker (TypeScript). __ORCHESTRATOR_URL__ is replaced
+# by Terraform with the orchestrator Cloud Run URL. Calls use OIDC as the workflow's SA
+# (sa-workflows); the orchestrator is IAM-private.
+main:
+  steps:
+    - discover:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/discover-all
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: discover_result
+    - reconcile:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/reconcile
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: reconcile_result
+    - enqueue:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/enqueue
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: enqueue_result
+    - done:
+        return:
+          discover: ${discover_result.body}
+          reconcile: ${reconcile_result.body}
+          enqueue: ${enqueue_result.body}

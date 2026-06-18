@@ -72,7 +72,13 @@ export class Warehouse {
     if (opts.clustering?.length) {
       metadata.clustering = { fields: opts.clustering };
     }
-    await this.bq.dataset(datasetId).createTable(tableId, metadata);
+    try {
+      await this.bq.dataset(datasetId).createTable(tableId, metadata);
+    } catch (err) {
+      // Concurrent collectors for the same property race check-then-create; the loser sees
+      // ALREADY_EXISTS (409). The table now exists either way, so treat it as success.
+      if ((err as { code?: number }).code !== 409) throw err;
+    }
   }
 
   /** Write rows as NDJSON to the staging bucket; returns the object path. */
@@ -120,6 +126,64 @@ export class Warehouse {
   async appendTaskLog(fields: readonly BqField[], row: TaskLogRow): Promise<void> {
     await this.ensureTable(DATASETS.taskLogs, 'attempts', fields);
     await this.bq.dataset(DATASETS.taskLogs).table('attempts').insert([row]);
+  }
+
+  /**
+   * Sum clicks/impressions of the byProperty rows for one (property, day, type) — the basis of
+   * the totals anonymized-query delta (SPEC §7.2). Returns zeros if the table/slice doesn't exist.
+   */
+  async sumByProperty(
+    sanitizedTableName: string,
+    dataDate: string,
+    searchType: string,
+  ): Promise<{ clicks: number; impressions: number }> {
+    const table = this.bq.dataset(DATASETS.byProperty).table(sanitizedTableName);
+    const [exists] = await table.exists();
+    if (!exists) return { clicks: 0, impressions: 0 };
+    const [rows] = await this.bq.query({
+      query: `SELECT IFNULL(SUM(clicks),0) AS clicks, IFNULL(SUM(impressions),0) AS impressions
+              FROM ${this.tableRef(DATASETS.byProperty, sanitizedTableName)}
+              WHERE data_date = @d AND search_type = @t`,
+      params: { d: dataDate, t: searchType },
+      location: this.cfg.location,
+    });
+    const r = rows[0] as { clicks?: number; impressions?: number } | undefined;
+    return { clicks: Number(r?.clicks ?? 0), impressions: Number(r?.impressions ?? 0) };
+  }
+
+  /** Run a read query and return rows (used by the API for logs/doctor; sa-api jobUser+dataViewer). */
+  async queryRows(
+    sql: string,
+    params?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>[]> {
+    const [rows] = await this.bq.query({
+      query: sql,
+      location: this.cfg.location,
+      ...(params ? { params } : {}),
+    });
+    return rows as Record<string, unknown>[];
+  }
+
+  /** Create or replace a view in the gsc_views dataset (property-group union views, SPEC §6.4). */
+  async createOrReplaceView(viewId: string, selectSql: string): Promise<void> {
+    await this.bq.query({
+      query: `CREATE OR REPLACE VIEW \`${this.cfg.projectId}.${DATASETS.views}.${viewId}\` AS ${selectSql}`,
+      location: this.cfg.location,
+    });
+  }
+
+  /** Whether a table/view exists. */
+  async tableExists(datasetId: string, tableId: string): Promise<boolean> {
+    const [exists] = await this.bq.dataset(datasetId).table(tableId).exists();
+    return exists;
+  }
+
+  /** Drop a view in gsc_views if it exists (group deletion). */
+  async dropViewIfExists(viewId: string): Promise<void> {
+    await this.bq.query({
+      query: `DROP VIEW IF EXISTS \`${this.cfg.projectId}.${DATASETS.views}.${viewId}\``,
+      location: this.cfg.location,
+    });
   }
 
   /** Standing invariant (SPEC §9): no row_hash appears more than once. */

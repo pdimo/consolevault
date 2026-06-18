@@ -22,12 +22,16 @@ export type PropertyType = 'url_prefix' | 'domain';
 export type TokenHealth = 'valid' | 'expires_soon' | 'broken' | 'revoked';
 
 /**
- * Terminal + non-terminal task states (SPEC §8). `collected_no_data` is terminal and
- * distinct from `error` — the API omits days with no traffic rather than failing.
+ * Task states (SPEC §8). Terminal (locked) states are `collected_with_data` / `collected_no_data`
+ * — reached only when the collected day is FINAL (`data_date < first_incomplete_date`).
+ * `collected_fresh` is NON-terminal: the day was collected while still fresh (Google is still
+ * finalizing it), so the planner re-collects it until it finalizes. `collected_no_data` is distinct
+ * from `error` — the API omits days with no traffic rather than failing.
  */
 export type TaskStatus =
   | 'pending'
   | 'queued'
+  | 'collected_fresh'
   | 'collected_with_data'
   | 'collected_no_data'
   | 'error';
@@ -35,8 +39,11 @@ export type TaskStatus =
 /** How an account authenticates (SPEC §3). */
 export type AccountType = 'oauth' | 'service_account';
 
-/** GSC data freshness state used in queries. Stage 0 only uses `final`. */
-export type DataState = 'final' | 'all';
+/**
+ * Per-row finality label stored in `GscRow.data_state`. `final` = Google has finalized the day
+ * (`data_date < first_incomplete_date`); `fresh` = still being collected/processed and may change.
+ */
+export type DataState = 'final' | 'fresh';
 
 // ---------------------------------------------------------------------------
 // Control-plane entities (live in Firestore — SPEC §2)
@@ -57,6 +64,12 @@ export interface Account {
    * Optional: a service account reached via impersonation has no stored secret.
    */
   secretRef?: string;
+  /**
+   * Secret Manager secret id of the OAuth client config that minted this account's refresh token
+   * (refresh is client-specific). Defaults to the Desktop client (`oauth-client-config`); the
+   * in-UI web flow sets `oauth-web-client-config`.
+   */
+  oauthClientSecretId?: string;
   tokenHealth: TokenHealth;
   createdAt: string; // ISO 8601
   lastSuccessAt?: string; // ISO 8601
@@ -68,12 +81,10 @@ export interface CollectionConfig {
   /** Defaults to `['web']`; other types are opt-in per property. */
   types: SearchType[];
   aggregations: Aggregation[];
-  /** Days to subtract from "today" (PT) to reach the newest finalized day. */
+  /** Newest day attempted = today(PT) − offsetDays. Fresh days are auto-re-collected (SPEC §8). */
   offsetDays: number;
   /** How far back to backfill on first run. */
   backfillMonths: number;
-  /** Rolling re-collection window to absorb Google restatements (default ~30, SPEC §8). */
-  lookbackDays?: number;
 }
 
 /** A discovered GSC property (SPEC §4). */
@@ -106,6 +117,17 @@ export interface PropertyGroup {
   memberPropertyIds: string[];
   /** True when the group mixes a domain property with URL-prefix children (double-count risk). */
   doubleCountWarning?: boolean;
+  /** Name of the generated BigQuery union view in gsc_views. */
+  viewId?: string;
+}
+
+/** Global defaults applied to newly-discovered properties (SPEC §10 settings). */
+export interface Settings {
+  defaultOffsetDays: number;
+  defaultBackfillMonths: number;
+  /** Default search types for new properties (web on by default). */
+  defaultTypes: SearchType[];
+  defaultAggregations: Aggregation[];
 }
 
 /**

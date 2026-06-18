@@ -1,29 +1,56 @@
-import { useState } from 'react';
+import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { useAuth } from './auth';
+import { Login } from './Login';
 import Accounts from './Accounts';
 import Properties from './Properties';
+import Property from './Property';
+import Groups from './Groups';
+import Jobs from './Jobs';
+import Doctor from './Doctor';
+import Settings from './Settings';
 
-/** Stage 1 single-admin UI: accounts (token-health) + properties (include/exclude). */
+const NAV = [
+  ['/accounts', 'Accounts'],
+  ['/properties', 'Properties'],
+  ['/groups', 'Groups'],
+  ['/jobs', 'Jobs'],
+  ['/doctor', 'Doctor'],
+  ['/settings', 'Settings'],
+] as const;
+
 export default function App() {
-  const [tab, setTab] = useState<'accounts' | 'properties'>('accounts');
-  // Bumped whenever discovery runs so the Properties view reloads.
-  const [reloadKey, setReloadKey] = useState(0);
+  const { state, signOut } = useAuth();
+
+  if (state.status === 'loading') return <div className="center">Loading…</div>;
+  if (state.status !== 'authed') return <Login />;
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 1000 }}>
-      <h1>ConsoleVault</h1>
-      <nav style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-        <button onClick={() => setTab('accounts')} disabled={tab === 'accounts'}>
-          Accounts
-        </button>
-        <button onClick={() => setTab('properties')} disabled={tab === 'properties'}>
-          Properties
-        </button>
-      </nav>
-      {tab === 'accounts' ? (
-        <Accounts onChanged={() => setReloadKey((k) => k + 1)} />
-      ) : (
-        <Properties reloadKey={reloadKey} />
-      )}
-    </main>
+    <div className="app">
+      <header className="topbar">
+        <span className="brand">ConsoleVault</span>
+        <nav>
+          {NAV.map(([to, label]) => (
+            <NavLink key={to} to={to} className={({ isActive }) => (isActive ? 'active' : '')}>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <span className="spacer" />
+        <span className="muted">{state.email}</span>
+        <button onClick={() => void signOut()}>Sign out</button>
+      </header>
+      <main className="content">
+        <Routes>
+          <Route path="/" element={<Navigate to="/accounts" replace />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/properties" element={<Properties />} />
+          <Route path="/properties/:id" element={<Property />} />
+          <Route path="/groups" element={<Groups />} />
+          <Route path="/jobs" element={<Jobs />} />
+          <Route path="/doctor" element={<Doctor />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </main>
+    </div>
   );
 }

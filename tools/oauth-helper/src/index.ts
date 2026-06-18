@@ -152,6 +152,16 @@ async function addServiceAccount(values: Record<string, string | undefined>): Pr
   );
 }
 
+async function addWebClient(values: Record<string, string | undefined>): Promise<void> {
+  const clientJsonPath = values['client-json'];
+  if (!clientJsonPath) throw new Error('add-web-client requires --client-json <path>');
+  const clientConfig = parseClientSecretJson(JSON.parse(await readFile(clientJsonPath, 'utf8')));
+  const projectId = await resolveProjectId();
+  const secrets = new SecretStore(projectId);
+  await secrets.putSecret(SECRET_IDS.oauthWebClientConfig, JSON.stringify(clientConfig));
+  console.log('✓ Stored the Web OAuth client config (for Google Sign-In + in-UI connect).');
+}
+
 async function listAccounts(): Promise<void> {
   const accounts = await new AccountRepository().list();
   if (accounts.length === 0) {
@@ -182,14 +192,18 @@ async function main(): Promise<void> {
     case 'add-service-account':
       await addServiceAccount(values);
       break;
+    case 'add-web-client':
+      await addWebClient(values);
+      break;
     case 'list':
       await listAccounts();
       break;
     default:
       console.error(
-        'Usage: consolevault-auth <add-oauth|add-service-account|list> [options]\n' +
+        'Usage: consolevault-auth <add-oauth|add-service-account|add-web-client|list> [options]\n' +
           '  add-oauth           --client-json <path> [--name <label>] [--port <n>]\n' +
           '  add-service-account --email <sa-email> [--key <path>] [--name <label>]\n' +
+          '  add-web-client      --client-json <path>   (Web OAuth client for the UI sign-in/connect)\n' +
           '  list',
       );
       process.exit(command ? 1 : 0);

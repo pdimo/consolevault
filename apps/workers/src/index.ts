@@ -1,18 +1,25 @@
 /**
- * ConsoleVault collector worker (Cloud Run, runs as sa-collector).
- *
- * Stage 2: `POST /collect` runs one collection (headless manual trigger). Cloud Tasks/Workflows
- * will invoke this same endpoint with retries/backoff in Stage 3.
+ * ConsoleVault workers HTTP server (Cloud Run). One image, deployed as TWO services:
+ *   - collector  (sa-collector): Cloud Tasks → POST /collect
+ *   - orchestrator (sa-workflows): daily Workflow → /discover-all, /reconcile, /enqueue
+ * IAM (the service identity) gates which endpoints actually work on each deployment.
  */
 
 import Fastify from 'fastify';
+import { loadConfig } from '@consolevault/config';
 import { CollectionError } from '@consolevault/gsc';
+import { discoverAllAccounts, SecretStore } from '@consolevault/store';
 import { collectTask, type CollectInput } from './collector.js';
+import { reconcile } from './planner.js';
+import { enqueueAll } from './enqueue.js';
 
 const app = Fastify({ logger: true });
+const config = loadConfig();
+const secretStore = new SecretStore(config.projectId);
 
-app.get('/health', async () => ({ status: 'ok', service: 'consolevault-collector', stage: 2 }));
+app.get('/health', async () => ({ status: 'ok', service: 'consolevault-workers', stage: 3 }));
 
+// --- collector (sa-collector) ---
 app.post('/collect', async (req, reply) => {
   const body = (req.body ?? {}) as Partial<CollectInput>;
   if (!body.propertyId || !body.dataDate) {
@@ -26,7 +33,6 @@ app.post('/collect', async (req, reply) => {
       ...(body.aggregation ? { aggregation: body.aggregation } : {}),
     });
   } catch (err) {
-    // Retryable (quota/5xx) → 503 so Cloud Tasks backs off (Stage 3); else 500.
     const retryable = err instanceof CollectionError && err.retryable;
     const message = err instanceof Error ? err.message : String(err);
     app.log.error(err);
@@ -34,12 +40,17 @@ app.post('/collect', async (req, reply) => {
   }
 });
 
+// --- orchestrator (sa-workflows), called by the daily Workflow ---
+app.post('/discover-all', async () => discoverAllAccounts(secretStore));
+app.post('/reconcile', async () => reconcile());
+app.post('/enqueue', async () => enqueueAll());
+
 const port = Number(process.env.PORT ?? 8080);
 
 app
   .listen({ port, host: '0.0.0.0' })
   .then((address) => {
-    app.log.info(`consolevault-collector listening on ${address}`);
+    app.log.info(`consolevault-workers listening on ${address}`);
   })
   .catch((err: unknown) => {
     app.log.error(err);

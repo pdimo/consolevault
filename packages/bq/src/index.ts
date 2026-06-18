@@ -9,3 +9,4 @@ export * from './schema.js';
 export * from './sanitize.js';
 export * from './rowhash.js';
 export * from './write.js';
+export * from './views.js';

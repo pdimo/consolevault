@@ -1,0 +1,78 @@
+/**
+ * Reconciliation planner (SPEC §8 — the correctness core).
+ *
+ * Backfill, daily increment, gap-fill, and look-back are the SAME operation: each run computes the
+ * rolling window per cell (property × type × aggregation × day) and writes `pending` Task docs for
+ * the days not already terminal (plus the look-back window). New and year-old properties run
+ * identical logic, so steady-state can't drift from backfill.
+ */
+
+import { daysInRange, windowFor } from '@consolevault/gsc';
+import { PropertyRepository, TaskRepository, taskId } from '@consolevault/store';
+import type { Task } from '@consolevault/types';
+
+/**
+ * Days to (re)collect: window days that aren't FINAL-terminal yet. `terminalDays` holds only days
+ * locked as final (`collected_with_data`/`collected_no_data`). `collected_fresh` days are NOT in
+ * the set, so they re-collect automatically each run until Google finalizes them (SPEC §8). Pure.
+ */
+export function computeMissingDays(allDays: string[], terminalDays: Set<string>): string[] {
+  return allDays.filter((d) => !terminalDays.has(d));
+}
+
+/** Reconcile all included properties: write pending Task docs for missing cells. */
+export async function reconcile(): Promise<{ properties: number; created: number }> {
+  const propertyRepo = new PropertyRepository();
+  const taskRepo = new TaskRepository();
+  const properties = (await propertyRepo.list()).filter((p) => p.included);
+
+  let created = 0;
+  for (const property of properties) {
+    const accountId = property.preferredAccountId ?? property.accountIds[0];
+    if (!accountId) continue;
+
+    const { config } = property;
+    const { oldest, newest } = windowFor(config.offsetDays, config.backfillMonths);
+    const allDays = daysInRange(oldest, newest);
+
+    const existing = new Map((await taskRepo.listByProperty(property.id)).map((t) => [t.id, t]));
+    const terminalByCell = new Map<string, Set<string>>();
+    for (const t of existing.values()) {
+      if (t.status === 'collected_with_data' || t.status === 'collected_no_data') {
+        const key = `${t.searchType}|${t.aggregation}`;
+        let set = terminalByCell.get(key);
+        if (!set) {
+          set = new Set();
+          terminalByCell.set(key, set);
+        }
+        set.add(t.dataDate);
+      }
+    }
+
+    for (const aggregation of config.aggregations) {
+      for (const searchType of config.types) {
+        const terminal = terminalByCell.get(`${searchType}|${aggregation}`) ?? new Set<string>();
+        const missing = computeMissingDays(allDays, terminal);
+        for (const day of missing) {
+          const id = taskId(property.id, searchType, aggregation, day);
+          const ex = existing.get(id);
+          // Don't clobber an in-flight task (Cloud Tasks name dedup also protects double-runs).
+          if (ex && (ex.status === 'pending' || ex.status === 'queued')) continue;
+          const task: Task = {
+            id,
+            propertyId: property.id,
+            searchType,
+            aggregation,
+            dataDate: day,
+            status: 'pending',
+            attempts: 0,
+            accountId,
+          };
+          await taskRepo.create(task);
+          created++;
+        }
+      }
+    }
+  }
+  return { properties: properties.length, created };
+}

@@ -9,3 +9,7 @@ export * from './accounts.js';
 export * from './properties.js';
 export * from './tasks.js';
 export * from './auth.js';
+export * from './discovery.js';
+export * from './coverage.js';
+export * from './groups.js';
+export * from './settings.js';

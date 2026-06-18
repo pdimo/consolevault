@@ -11,6 +11,7 @@ const row = {
   country: 'AUS',
   device: 'MOBILE',
   search_appearance: null,
+  is_anonymized: false,
 };
 
 describe('rowHash', () => {
@@ -37,5 +38,21 @@ describe('rowHash', () => {
     const b = rowHash({ ...row, query: '' });
     // null and empty-string both serialize to '' in the tuple — documented collapse.
     expect(a).toBe(b);
+  });
+
+  it('distinguishes the totals raw vs anonymized-delta rows (same dimensions)', () => {
+    const totalsRow = {
+      property: 'sc-domain:example.com',
+      data_date: '2026-06-15',
+      search_type: 'web' as const,
+      aggregation: 'totals' as const,
+      query: null,
+      page: null,
+      country: null,
+      device: null,
+      search_appearance: null,
+      is_anonymized: false,
+    };
+    expect(rowHash(totalsRow)).not.toBe(rowHash({ ...totalsRow, is_anonymized: true }));
   });
 });

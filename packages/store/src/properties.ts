@@ -16,9 +16,8 @@ import { COLLECTIONS, getFirestore } from './firestore.js';
 export const DEFAULT_COLLECTION_CONFIG: CollectionConfig = {
   types: ['web'],
   aggregations: ['byProperty'],
-  offsetDays: 3,
+  offsetDays: 2,
   backfillMonths: 16,
-  lookbackDays: 30,
 };
 
 /** A normalized discovery observation for one (account, site) at a point in time. */

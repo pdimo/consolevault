@@ -1,79 +1,88 @@
 import { useEffect, useState } from 'react';
-import type { Property } from '@consolevault/types';
+import { Link } from 'react-router-dom';
+import type { Account, Property } from '@consolevault/types';
 import { api } from './api';
 
-function TypeTag({ kind }: { kind: Property['propertyType'] }) {
-  const isDomain = kind === 'domain';
-  return (
-    <span
-      style={{
-        background: isDomain ? '#1a73e8' : '#5f6368',
-        color: 'white',
-        borderRadius: 4,
-        padding: '2px 8px',
-        fontSize: 12,
-      }}
-    >
-      {isDomain ? 'Domain' : 'URL-prefix'}
-    </span>
-  );
-}
-
-export default function Properties({ reloadKey }: { reloadKey: number }) {
+export default function Properties() {
   const [properties, setProperties] = useState<Property[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
 
-  const refresh = () => {
-    api
-      .listProperties()
-      .then(setProperties)
-      .catch((e: unknown) => setError(String(e)));
+  const load = async () => {
+    setProperties(await api.listProperties());
+    setAccounts(await api.listAccounts());
   };
-  useEffect(refresh, [reloadKey]);
+  useEffect(() => {
+    load().catch((e: unknown) => setError(String(e)));
+  }, []);
+
+  const accountName = (id: string) =>
+    accounts.find((a) => a.id === id)?.displayName ?? id.slice(0, 8);
 
   const toggle = async (p: Property) => {
     setError(null);
     try {
-      await api.setIncluded(p.id, !p.included);
-      refresh();
+      await api.patchProperty(p.id, { included: !p.included });
+      await load();
     } catch (e) {
       setError(String(e));
     }
   };
 
+  const shown = properties.filter((p) => p.siteUrl.toLowerCase().includes(filter.toLowerCase()));
+
   return (
     <section>
-      <h2>Properties ({properties.length})</h2>
-      {error && <p style={{ color: '#c5221f' }}>{error}</p>}
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>Properties ({properties.length})</h2>
+        <input placeholder="filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      </div>
+      {error && <p className="error">{error}</p>}
+      <table>
         <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
-            <th>Included</th>
+          <tr>
+            <th>Collect</th>
             <th>Property</th>
             <th>Type</th>
             <th>Permission</th>
-            <th>Accounts</th>
+            <th>Account(s)</th>
+            <th>Types</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          {properties.map((p) => (
-            <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
+          {shown.map((p) => (
+            <tr key={p.id}>
               <td>
-                <input type="checkbox" checked={p.included} onChange={() => toggle(p)} />
+                <input type="checkbox" checked={p.included} onChange={() => void toggle(p)} />
               </td>
               <td>
-                <code>{p.siteUrl}</code>
+                <Link to={`/properties/${p.id}`}>
+                  <code>{p.siteUrl}</code>
+                </Link>
               </td>
               <td>
-                <TypeTag kind={p.propertyType} />
+                <span className="tag">{p.propertyType === 'domain' ? 'Domain' : 'URL-prefix'}</span>
               </td>
               <td>{p.permissionLevel ?? '—'}</td>
-              <td>{p.accountIds.length}</td>
+              <td>
+                {p.accountIds.map(accountName).join(', ')}
+                {p.preferredAccountId && p.accountIds.length > 1 && (
+                  <span className="muted"> (pref: {accountName(p.preferredAccountId)})</span>
+                )}
+              </td>
+              <td>{p.config.types.join(', ')}</td>
+              <td>
+                <Link to={`/properties/${p.id}`}>Configure →</Link>
+              </td>
             </tr>
           ))}
-          {properties.length === 0 && (
+          {shown.length === 0 && (
             <tr>
-              <td colSpan={5}>No properties yet — run discovery on an account.</td>
+              <td colSpan={7} className="muted">
+                No properties — connect an account (discovery runs automatically).
+              </td>
             </tr>
           )}
         </tbody>

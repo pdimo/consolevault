@@ -99,9 +99,11 @@ You MAY run `gcloud` and `terraform` yourself. BUT:
   per property.
 - Aggregations: `byProperty` (query-level), `byPage` (page-level — drops more data),
   `totals` (for the anonymized-query delta). They do NOT reconcile by design.
-- The API omits days with no data (returns nothing, not zero rows). Mark such days
-  `collected_no_data` (terminal), distinct from `pending`. Confirm via the cheap
-  date-grouped presence check.
+- Collect with `dataState=all` and use the response's `first_incomplete_date` (PT) to label each
+  day `final` vs `fresh`. The API omits no-traffic days (returns nothing): that means
+  `collected_no_data` (terminal) ONLY when the day is **final**; a **fresh** no-data day is
+  `collected_fresh` (non-terminal → re-collected until it finalizes). There is no fixed look-back
+  window. See `docs/DATA-FRESHNESS.md`.
 - Row exposure ceiling: 50K rows/day/type. Paginate 25K per page, stop at 50K.
 - Rate limit binding constraint = per-user 1,200 QPM, shared across an account's
   properties → one Cloud Tasks queue per account, dispatch well under the limit.

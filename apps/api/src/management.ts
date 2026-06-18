@@ -1,0 +1,285 @@
+/**
+ * Management endpoints (SPEC §10): coverage heatmap, verify-setup Doctor, jobs/logs + re-collect +
+ * run-now, queue status, property groups (+ union view), and settings. Mostly read-only (sa-api).
+ */
+
+import { randomUUID } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+import { CloudTasksClient } from '@google-cloud/tasks';
+import { ExecutionsClient } from '@google-cloud/workflows';
+import { daysInRange, listSites, windowFor } from '@consolevault/gsc';
+import {
+  authClientForAccount,
+  coverageState,
+  detectDoubleCount,
+  taskId,
+} from '@consolevault/store';
+import { buildUnionViewSql, DATASETS } from '@consolevault/bq';
+import type { Aggregation, PropertyGroup, SearchType, Settings, Task } from '@consolevault/types';
+import {
+  accountRepo,
+  config,
+  groupRepo,
+  propertyRepo,
+  secretStore,
+  settingsRepo,
+  taskRepo,
+  warehouse,
+} from './deps.js';
+import { HttpError } from './errors.js';
+
+const tasksClient = new CloudTasksClient();
+const executionsClient = new ExecutionsClient();
+const workflowParent = `projects/${config.projectId}/locations/${config.region}/workflows/${config.appName}-daily`;
+const taskLogsTable = `\`${config.projectId}.task_logs.attempts\``;
+
+interface IdParams {
+  id: string;
+}
+
+export function registerManagementRoutes(app: FastifyInstance): void {
+  // --- Coverage heatmap (Firestore-only; fast) ---
+  app.get<{ Params: IdParams }>('/api/properties/:id/coverage', async (req) => {
+    const property = await propertyRepo.get(req.params.id);
+    if (!property) throw new HttpError(404, 'Property not found');
+    const tasks = await taskRepo.listByProperty(property.id);
+    const byCell = new Map(tasks.map((t) => [`${t.searchType}|${t.aggregation}|${t.dataDate}`, t]));
+    const { oldest, newest } = windowFor(
+      property.config.offsetDays,
+      property.config.backfillMonths,
+    );
+    const days = daysInRange(oldest, newest);
+    const cells = property.config.aggregations.flatMap((aggregation) =>
+      property.config.types.map((searchType) => ({
+        aggregation,
+        searchType,
+        days: days.map((date) => ({
+          date,
+          state: coverageState(byCell.get(`${searchType}|${aggregation}|${date}`)),
+        })),
+      })),
+    );
+    const collected = tasks
+      .filter((t) => t.status === 'collected_with_data')
+      .map((t) => t.dataDate)
+      .sort();
+    return { window: { oldest, newest }, cells, freshness: collected.at(-1) ?? null };
+  });
+
+  // --- Anomaly % (totals vs byProperty sum) — best-effort BQ read ---
+  app.get<{ Params: IdParams }>('/api/properties/:id/anomaly', async (req) => {
+    const property = await propertyRepo.get(req.params.id);
+    if (!property) throw new HttpError(404, 'Property not found');
+    try {
+      const rows = await warehouse.queryRows(
+        `SELECT SAFE_DIVIDE(SUM(IF(is_anonymized, impressions, 0)), SUM(impressions)) AS anomaly_pct
+         FROM \`${config.projectId}.gsc_totals.${property.sanitizedTableName}\``,
+      );
+      const pct = rows[0]?.anomaly_pct;
+      return { anomalyPct: pct == null ? null : Number(pct) };
+    } catch {
+      return { anomalyPct: null };
+    }
+  });
+
+  // --- Verify-setup Doctor ---
+  app.get('/api/doctor', async () => {
+    const checks: { name: string; ok: boolean; detail: string }[] = [];
+    const accounts = await accountRepo.list();
+    checks.push({
+      name: 'Accounts connected',
+      ok: accounts.some((a) => a.tokenHealth === 'valid'),
+      detail: `${accounts.length} account(s)`,
+    });
+
+    const probe = accounts.find((a) => a.tokenHealth === 'valid') ?? accounts[0];
+    try {
+      if (!probe) throw new Error('no account');
+      const auth = await authClientForAccount(probe, secretStore);
+      const sites = await listSites(auth);
+      checks.push({ name: 'GSC test query', ok: true, detail: `${sites.length} sites visible` });
+    } catch (err) {
+      checks.push({ name: 'GSC test query', ok: false, detail: errMsg(err) });
+    }
+
+    try {
+      await warehouse.queryRows('SELECT 1 AS ok');
+      checks.push({ name: 'BigQuery reachable', ok: true, detail: 'ok' });
+    } catch (err) {
+      checks.push({ name: 'BigQuery reachable', ok: false, detail: errMsg(err) });
+    }
+
+    try {
+      const [executions] = await executionsClient.listExecutions({
+        parent: workflowParent,
+        pageSize: 1,
+      });
+      const last = executions[0];
+      checks.push({
+        name: 'Daily workflow',
+        ok: !last || last.state !== 'FAILED',
+        detail: last ? `last run: ${last.state}` : 'no runs yet',
+      });
+    } catch (err) {
+      checks.push({ name: 'Daily workflow', ok: false, detail: errMsg(err) });
+    }
+
+    try {
+      const rows = await warehouse.queryRows(
+        `SELECT COUNT(*) AS n FROM ${taskLogsTable} WHERE logged_at > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`,
+      );
+      const n = Number(rows[0]?.n ?? 0);
+      checks.push({ name: 'Recent collection', ok: n > 0, detail: `${n} attempts in 7d` });
+    } catch (err) {
+      checks.push({ name: 'Recent collection', ok: false, detail: errMsg(err) });
+    }
+
+    return { ok: checks.every((c) => c.ok), checks };
+  });
+
+  // --- Jobs / tasks (Firestore) ---
+  app.get('/api/tasks', async (req) => {
+    const { status, propertyId } = req.query as { status?: Task['status']; propertyId?: string };
+    if (status) return taskRepo.listByStatus(status);
+    if (propertyId) return taskRepo.listByProperty(propertyId);
+    return taskRepo.list();
+  });
+
+  // --- Logs (task_logs.attempts, searchable by property) ---
+  app.get('/api/logs', async (req) => {
+    const { propertyId, limit } = req.query as { propertyId?: string; limit?: string };
+    const lim = Math.min(Number(limit ?? 200) || 200, 1000);
+    const where = propertyId ? 'WHERE STARTS_WITH(task_id, @prefix)' : '';
+    return warehouse.queryRows(
+      `SELECT task_id, property, search_type, aggregation, data_date, status, row_count, error_message, logged_at
+       FROM ${taskLogsTable} ${where} ORDER BY logged_at DESC LIMIT ${lim}`,
+      propertyId ? { prefix: `${propertyId}__` } : undefined,
+    );
+  });
+
+  // --- Re-collect one cell (mark pending; next run collects) ---
+  app.post<{ Params: IdParams }>('/api/properties/:id/recollect', async (req) => {
+    const property = await propertyRepo.get(req.params.id);
+    if (!property) throw new HttpError(404, 'Property not found');
+    const body = (req.body ?? {}) as {
+      date?: string;
+      searchType?: SearchType;
+      aggregation?: Aggregation;
+    };
+    if (!body.date) throw new HttpError(400, 'date is required');
+    const searchType = body.searchType ?? 'web';
+    const aggregation = body.aggregation ?? 'byProperty';
+    const accountId = property.preferredAccountId ?? property.accountIds[0];
+    if (!accountId) throw new HttpError(400, 'Property has no associated account');
+    const id = taskId(property.id, searchType, aggregation, body.date);
+    const task: Task = {
+      id,
+      propertyId: property.id,
+      searchType,
+      aggregation,
+      dataDate: body.date,
+      status: 'pending',
+      attempts: 0,
+      accountId,
+    };
+    await taskRepo.create(task);
+    return { task: id, status: 'pending' };
+  });
+
+  // --- Run the daily pipeline now ---
+  app.post('/api/pipeline/run', async () => {
+    const [execution] = await executionsClient.createExecution({ parent: workflowParent });
+    return { execution: execution.name, state: execution.state };
+  });
+
+  // --- Per-account queue status ---
+  app.get('/api/queues', async () => {
+    const parent = tasksClient.locationPath(config.projectId, config.region);
+    const [queues] = await tasksClient.listQueues({ parent });
+    return queues
+      .filter((q) => q.name?.includes('/cv-acct-'))
+      .map((q) => ({
+        name: q.name?.split('/').pop(),
+        state: q.state,
+        maxDispatchesPerSecond: q.rateLimits?.maxDispatchesPerSecond,
+      }));
+  });
+
+  // --- Property groups (+ generated union view) ---
+  app.get('/api/groups', async () => groupRepo.list());
+
+  app.post('/api/groups', async (req, reply) => {
+    const body = (req.body ?? {}) as { name?: string; memberPropertyIds?: string[] };
+    if (!body.name) throw new HttpError(400, 'name is required');
+    const saved = await saveGroup({
+      id: randomUUID(),
+      name: body.name,
+      memberPropertyIds: body.memberPropertyIds ?? [],
+    });
+    reply.code(201);
+    return saved;
+  });
+
+  app.patch<{ Params: IdParams }>('/api/groups/:id', async (req) => {
+    const existing = await groupRepo.get(req.params.id);
+    if (!existing) throw new HttpError(404, 'Group not found');
+    const body = (req.body ?? {}) as { name?: string; memberPropertyIds?: string[] };
+    return saveGroup({
+      ...existing,
+      ...(body.name ? { name: body.name } : {}),
+      ...(body.memberPropertyIds ? { memberPropertyIds: body.memberPropertyIds } : {}),
+    });
+  });
+
+  app.delete<{ Params: IdParams }>('/api/groups/:id', async (req, reply) => {
+    const existing = await groupRepo.get(req.params.id);
+    if (existing?.viewId) await warehouse.dropViewIfExists(existing.viewId);
+    await groupRepo.delete(req.params.id);
+    reply.code(204);
+  });
+
+  // --- Settings ---
+  app.get('/api/settings', async () => settingsRepo.get());
+  app.put('/api/settings', async (req) => {
+    const settings = req.body as Settings;
+    await settingsRepo.put(settings);
+    return settings;
+  });
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Persist a group, recomputing the double-count warning and (re)building its union view. */
+async function saveGroup(group: PropertyGroup): Promise<PropertyGroup> {
+  const members = (
+    await Promise.all(group.memberPropertyIds.map((id) => propertyRepo.get(id)))
+  ).filter((p): p is NonNullable<typeof p> => Boolean(p));
+  const doubleCountWarning = detectDoubleCount(members);
+  const viewId = `group_${group.id.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  // A property only has a byProperty table once it's been collected. Union only the members that
+  // actually exist; if none do yet, skip the view (it's (re)built when members are collected and
+  // the group is next saved).
+  const existing: string[] = [];
+  for (const m of members) {
+    if (await warehouse.tableExists(DATASETS.byProperty, m.sanitizedTableName)) {
+      existing.push(m.sanitizedTableName);
+    }
+  }
+  if (existing.length > 0) {
+    await warehouse.createOrReplaceView(viewId, buildUnionViewSql(config.projectId, existing));
+  } else {
+    await warehouse.dropViewIfExists(viewId);
+  }
+
+  const { viewId: _previous, ...rest } = group;
+  const saved: PropertyGroup = {
+    ...rest,
+    doubleCountWarning,
+    ...(existing.length > 0 ? { viewId } : {}),
+  };
+  await groupRepo.upsert(saved);
+  return saved;
+}

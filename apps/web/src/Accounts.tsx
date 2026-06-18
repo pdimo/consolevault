@@ -1,66 +1,73 @@
 import { useEffect, useState } from 'react';
 import type { Account, TokenHealth } from '@consolevault/types';
 import { api } from './api';
+import { useAuth } from './auth';
 
 const HEALTH_COLOR: Record<TokenHealth, string> = {
-  valid: '#137333',
-  expires_soon: '#b06000',
-  broken: '#c5221f',
-  revoked: '#c5221f',
+  valid: 'var(--green)',
+  expires_soon: 'var(--amber)',
+  broken: 'var(--red)',
+  revoked: 'var(--red)',
 };
 
-function Badge({ health }: { health: TokenHealth }) {
-  return (
-    <span
-      style={{
-        background: HEALTH_COLOR[health],
-        color: 'white',
-        borderRadius: 4,
-        padding: '2px 8px',
-        fontSize: 12,
-      }}
-    >
-      {health}
-    </span>
-  );
-}
-
-export default function Accounts({ onChanged }: { onChanged: () => void }) {
+export default function Accounts() {
+  const { state } = useAuth();
+  const sa = state.collectorServiceAccount ?? '';
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [saEmail, setSaEmail] = useState('');
+  const [saLabel, setSaLabel] = useState('');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = () => {
+  const load = () =>
     api
       .listAccounts()
       .then(setAccounts)
       .catch((e: unknown) => setError(String(e)));
-  };
-  useEffect(refresh, []);
+  useEffect(() => {
+    void load();
+  }, []);
+  useEffect(() => {
+    if (sa && !saEmail) setSaEmail(sa);
+  }, [sa, saEmail]);
 
-  const run = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(label);
+  const connectBanner = new URLSearchParams(window.location.search).get('connect');
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
     setError(null);
     try {
       await fn();
-      refresh();
-      onChanged();
+      await load();
     } catch (e) {
       setError(String(e));
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
+  };
+
+  const connect = async () => {
+    const { url } = await api.connectStart();
+    window.location.href = url;
   };
 
   return (
     <section>
-      <h2>Accounts</h2>
-      {error && <p style={{ color: '#c5221f' }}>{error}</p>}
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2>Accounts</h2>
+        <button className="primary" onClick={() => void connect()}>
+          + Connect Google account
+        </button>
+      </div>
+      {connectBanner === 'success' && (
+        <p style={{ color: 'var(--green)' }}>Account connected — properties discovered below.</p>
+      )}
+      {connectBanner === 'denied' && <p className="error">Connection was cancelled.</p>}
+      {error && <p className="error">{error}</p>}
+
+      <table>
         <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
+          <tr>
             <th>Name</th>
             <th>Type</th>
             <th>Email</th>
@@ -71,31 +78,24 @@ export default function Accounts({ onChanged }: { onChanged: () => void }) {
         </thead>
         <tbody>
           {accounts.map((a) => (
-            <tr key={a.id} style={{ borderBottom: '1px solid #eee' }}>
+            <tr key={a.id}>
               <td>{a.displayName}</td>
-              <td>{a.type}</td>
+              <td>{a.type === 'oauth' ? 'OAuth' : 'Service account'}</td>
               <td>{a.email ?? '—'}</td>
               <td>
-                <Badge health={a.tokenHealth} />
+                <span className="badge" style={{ background: HEALTH_COLOR[a.tokenHealth] }}>
+                  {a.tokenHealth}
+                </span>
               </td>
               <td>{a.lastSuccessAt ? new Date(a.lastSuccessAt).toLocaleString() : '—'}</td>
-              <td>
-                <button
-                  disabled={busy !== null}
-                  onClick={() => run('d' + a.id, () => api.discover(a.id))}
-                >
-                  Run discovery
-                </button>{' '}
-                <button
-                  disabled={busy !== null}
-                  onClick={() => run('h' + a.id, () => api.checkHealth(a.id))}
-                >
+              <td className="row">
+                <button disabled={busy} onClick={() => void run(() => api.discover(a.id))}>
+                  Discover
+                </button>
+                <button disabled={busy} onClick={() => void run(() => api.checkHealth(a.id))}>
                   Check health
-                </button>{' '}
-                <button
-                  disabled={busy !== null}
-                  onClick={() => run('x' + a.id, () => api.deleteAccount(a.id))}
-                >
+                </button>
+                <button disabled={busy} onClick={() => void run(() => api.deleteAccount(a.id))}>
                   Remove
                 </button>
               </td>
@@ -103,45 +103,47 @@ export default function Accounts({ onChanged }: { onChanged: () => void }) {
           ))}
           {accounts.length === 0 && (
             <tr>
-              <td colSpan={6}>No accounts yet.</td>
+              <td colSpan={6} className="muted">
+                No accounts yet — connect a Google account or register the service account below.
+              </td>
             </tr>
           )}
         </tbody>
       </table>
-      <h3>Add a service account</h3>
-      <p>
-        Add the service-account email as a user on the client&apos;s Search Console property first
-        (see docs/AUTH.md, Scenario C).
-      </p>
-      <input
-        placeholder="sa-collector@project.iam.gserviceaccount.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: 380 }}
-      />{' '}
-      <input
-        placeholder="label (optional)"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />{' '}
-      <button
-        disabled={busy !== null || !email}
-        onClick={() =>
-          run('add', () => api.addServiceAccount(email, name)).then(() => setEmail(''))
-        }
-      >
-        Add
-      </button>
-      <h3>Add an OAuth account</h3>
-      <p>
-        OAuth accounts are added with the local helper (a browser consent flow):
-        <br />
-        <code>
-          node tools/oauth-helper add-oauth --client-json &lt;path&gt; --name &quot;label&quot;
-        </code>
-        <br />
-        See <code>docs/AUTH.md</code> in the repository for the full per-scenario setup.
-      </p>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3>Service-account access</h3>
+        <p className="muted">
+          For clients who can&apos;t share an OAuth login: add <strong>this</strong> service-account
+          email as a user (Restricted is enough) on their Search Console property, then register it.
+        </p>
+        <div className="row">
+          <code style={{ fontSize: 14 }}>{sa || '…'}</code>
+          <button disabled={!sa} onClick={() => void navigator.clipboard.writeText(sa)}>
+            Copy
+          </button>
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          <label className="field">
+            service account email (defaults to the one above)
+            <input
+              value={saEmail}
+              onChange={(e) => setSaEmail(e.target.value)}
+              style={{ width: 380 }}
+            />
+          </label>
+          <label className="field">
+            label
+            <input value={saLabel} onChange={(e) => setSaLabel(e.target.value)} />
+          </label>
+          <button
+            disabled={busy || !saEmail}
+            onClick={() => void run(() => api.addServiceAccount(saEmail, saLabel))}
+          >
+            Register
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

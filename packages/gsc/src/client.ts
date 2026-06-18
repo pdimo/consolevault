@@ -7,8 +7,9 @@
 
 import { webmasters } from '@googleapis/webmasters';
 import type { AuthClient, OAuth2Client } from 'google-auth-library';
-import type { Aggregation, DataState, GscRow, SearchType } from '@consolevault/types';
+import type { Aggregation, GscRow, SearchType } from '@consolevault/types';
 import { derivePropertyType } from './discovery.js';
+import { addDays } from './dates.js';
 
 /** A property as returned by Sites:list. */
 export interface GscSite {
@@ -72,7 +73,8 @@ interface SearchAnalyticsRequestBody {
   aggregationType: 'byProperty' | 'byPage' | 'auto';
   rowLimit: number;
   startRow: number;
-  dataState: DataState;
+  /** Request `all` so the response includes fresh data + `metadata.first_incomplete_date`. */
+  dataState: 'all' | 'final';
 }
 
 /** Build the Search Analytics request body (pure; unit-tested). */
@@ -85,7 +87,7 @@ export function buildQuery(params: SearchAnalyticsQueryParams): SearchAnalyticsR
     aggregationType: params.aggregation === 'totals' ? 'byProperty' : params.aggregation,
     rowLimit: params.rowLimit,
     startRow: params.startRow,
-    dataState: 'final',
+    dataState: 'all',
   };
 }
 
@@ -96,6 +98,46 @@ export interface GscApiRow {
   impressions?: number | null;
   ctr?: number | null;
   position?: number | null;
+}
+
+/**
+ * A day is final when there's no incomplete boundary, or the day precedes it (SPEC §8). Pure.
+ */
+export function isDayFinal(dataDate: string, firstIncompleteDate: string | null): boolean {
+  return !firstIncompleteDate || dataDate < firstIncompleteDate;
+}
+
+/** How far back a range probe spans to capture `first_incomplete_date` (which sits near today). */
+const PROBE_RANGE_DAYS = 16;
+
+/**
+ * Fetch the property's `metadata.first_incomplete_date` (Pacific Time). The API only returns
+ * `metadata` for a MULTI-day range, so this issues one cheap `[date]`-grouped range query over the
+ * last ~16 days. The value is property/type-wide, so the collector probes it once per recent day.
+ * Returns null if the API omits it (older endpoints / no incomplete data).
+ */
+export async function fetchFirstIncompleteDate(
+  authClient: AuthClient,
+  siteUrl: string,
+  searchType: SearchType,
+  todayPt: string,
+): Promise<string | null> {
+  const api = webmasters({ version: 'v3', auth: asAuth(authClient) });
+  const requestBody: SearchAnalyticsRequestBody = {
+    startDate: addDays(todayPt, -PROBE_RANGE_DAYS),
+    endDate: todayPt,
+    type: searchType,
+    dimensions: ['date'],
+    aggregationType: 'auto',
+    rowLimit: 100,
+    startRow: 0,
+    dataState: 'all',
+  };
+  const res = await api.searchanalytics.query({ siteUrl, requestBody });
+  const meta = (
+    res.data as { metadata?: { firstIncompleteDate?: string; first_incomplete_date?: string } }
+  ).metadata;
+  return meta?.firstIncompleteDate ?? meta?.first_incomplete_date ?? null;
 }
 
 /** Execute ONE page of a Search Analytics query (the collector paginates via startRow). */
@@ -119,6 +161,7 @@ export function mapRowsToGscRows(
   rows: GscApiRow[],
   params: SearchAnalyticsQueryParams,
   collectedAt: string,
+  isFinal: boolean,
 ): Omit<GscRow, 'row_hash'>[] {
   const dims = dimensionsFor(params.aggregation, params.searchType);
   const valueOf = (keys: string[], dim: string): string | null => {
@@ -144,7 +187,7 @@ export function mapRowsToGscRows(
       position: r.position ?? 0,
       is_anonymized: false,
       collected_at: collectedAt,
-      data_state: 'final',
+      data_state: isFinal ? 'final' : 'fresh',
     };
   });
 }
