@@ -126,13 +126,34 @@ export class Warehouse {
   }
 
   /**
+   * Daily collection activity for the last `days` (Overview chart, Stage 7): tasks + rows per
+   * Pacific-Time day from task_logs. Returns [] if the log table doesn't exist yet.
+   */
+  async collectionActivity(
+    days = 14,
+  ): Promise<Array<{ date: string; tasks: number; rows: number }>> {
+    if (!(await this.tableExists(DATASETS.taskLogs, 'attempts'))) return [];
+    const [rows] = await this.bq.query({
+      query: `SELECT FORMAT_DATE('%Y-%m-%d', DATE(logged_at, 'America/Los_Angeles')) AS day,
+          COUNT(DISTINCT task_id) AS tasks, IFNULL(SUM(row_count), 0) AS n_rows
+        FROM ${this.tableRef(DATASETS.taskLogs, 'attempts')}
+        WHERE logged_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${days} DAY)
+        GROUP BY day ORDER BY day`,
+      location: this.cfg.location,
+    });
+    return (rows as Array<Record<string, unknown>>).map((r) => ({
+      date: String(r.day),
+      tasks: Number(r.tasks ?? 0),
+      rows: Number(r.n_rows ?? 0),
+    }));
+  }
+
+  /**
    * Real recent spend from a Cloud Billing export dataset (SPEC §11, opt-in). Sums the standard
    * `gcp_billing_export_v1_*` table over the last 30 days, by service. Returns null if the export
    * isn't set up (dataset/table missing) so the Costs panel falls back to the storage estimate.
    */
-  async billingSpend(
-    datasetId: string,
-  ): Promise<{
+  async billingSpend(datasetId: string): Promise<{
     currency: string;
     total: number;
     byService: Array<{ service: string; cost: number }>;

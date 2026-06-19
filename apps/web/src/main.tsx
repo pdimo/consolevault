@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './auth';
+import { ThemeProvider } from './theme';
+import { FeedbackProvider } from './components/feedback';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -12,10 +14,14 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <FeedbackProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </BrowserRouter>
+      </FeedbackProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

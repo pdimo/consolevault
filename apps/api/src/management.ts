@@ -291,6 +291,42 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     return { created };
   });
 
+  // --- Overview dashboard aggregate (Stage 7) ---
+  app.get('/api/overview', async () => {
+    const [accounts, properties, storage, usage, activity, errorTasks] = await Promise.all([
+      accountRepo.list(),
+      propertyRepo.list(),
+      warehouse.storageSummary().catch(() => []),
+      warehouse.apiUsage().catch(() => ({ todayTotal: 0, last7dTotal: 0, byAccount: [] })),
+      warehouse.collectionActivity(14).catch(() => []),
+      taskRepo.listByStatus('error').catch(() => []),
+    ]);
+    const tracking = properties.filter((p) => p.included).length;
+    const dataRows = storage
+      .filter((d) => d.dataset !== 'task_logs')
+      .reduce((sum, d) => sum + d.rows, 0);
+    const totalBytes = storage.reduce((sum, d) => sum + d.bytes, 0);
+    const estMonthlyStorageUsd = Number(((totalBytes / 1024 ** 3) * 0.02).toFixed(2));
+    const latestFinalDate = properties
+      .map((p) => (p.status?.dataState === 'final' ? p.status?.lastCollectedDate : undefined))
+      .filter((d): d is string => Boolean(d))
+      .sort()
+      .at(-1);
+    return {
+      accounts: {
+        total: accounts.length,
+        healthy: accounts.filter((a) => a.tokenHealth === 'valid').length,
+      },
+      properties: { tracking, available: properties.length - tracking, total: properties.length },
+      rows: dataRows,
+      estMonthlyStorageUsd,
+      apiCallsToday: usage.todayTotal,
+      openErrors: errorTasks.length,
+      latestFinalDate: latestFinalDate ?? null,
+      activity,
+    };
+  });
+
   // --- API quota & capacity (SPEC §13 / Stage 6) ---
   app.get('/api/quota', async () => {
     const [usage, accounts, properties] = await Promise.all([

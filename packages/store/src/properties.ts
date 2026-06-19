@@ -7,7 +7,7 @@
  */
 
 import type { Firestore } from '@google-cloud/firestore';
-import type { CollectionConfig, Property } from '@consolevault/types';
+import type { CollectionConfig, Property, PropertyStatus } from '@consolevault/types';
 import { disambiguatedTableName, sanitizeTableName } from '@consolevault/bq';
 import { derivePropertyType, type GscSite } from '@consolevault/gsc';
 import { COLLECTIONS, getFirestore } from './firestore.js';
@@ -126,5 +126,16 @@ export class PropertyRepository {
 
   async updateConfig(id: string, config: CollectionConfig): Promise<void> {
     await this.col().doc(id).set({ config }, { merge: true });
+  }
+
+  async setPreferredAccount(id: string, accountId: string): Promise<void> {
+    await this.col().doc(id).set({ preferredAccountId: accountId }, { merge: true });
+  }
+
+  /** Merge denormalized collection status onto a property doc (Stage 7 — fast list rendering). */
+  async setStatus(id: string, status: Partial<PropertyStatus>): Promise<void> {
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(status)) patch[`status.${k}`] = v;
+    await this.col().doc(id).update(patch);
   }
 }

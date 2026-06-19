@@ -285,7 +285,17 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
         apiCalls,
       },
     );
-    await accountRepo.update(accountId, { lastSuccessAt: new Date().toISOString() });
+    const nowIso = new Date().toISOString();
+    await accountRepo.update(accountId, { lastSuccessAt: nowIso });
+    // Denormalize collection status onto the property for fast list rendering (Stage 7). Only
+    // advance lastCollectedDate when this day is the newest with data; always refresh the timestamp.
+    const prevDate = property.status?.lastCollectedDate;
+    await propertyRepo.setStatus(input.propertyId, {
+      lastCollectedAt: nowIso,
+      ...(!prevDate || input.dataDate >= prevDate
+        ? { lastCollectedDate: input.dataDate, dataState: isFinal ? 'final' : 'fresh' }
+        : {}),
+    });
     return { taskId: id, status, rows: rowsLoaded };
   } catch (err) {
     const classified = classifyRetryable(err);
@@ -294,7 +304,15 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
     // retryable). While Cloud Tasks still has attempts left, leave the task `queued` so a retry runs
     // it — it no longer flips to `error` on the first transient failure.
     const lastAttempt = !classified.retryable || attempt >= TASK_MAX_ATTEMPTS;
-    if (lastAttempt) await taskRepo.setTerminal(id, 'error');
+    if (lastAttempt) {
+      await taskRepo.setTerminal(id, 'error');
+      await propertyRepo
+        .setStatus(input.propertyId, {
+          lastError: classified.message,
+          lastErrorAt: new Date().toISOString(),
+        })
+        .catch(() => {});
+    }
     await appendLog(
       id,
       property.siteUrl,

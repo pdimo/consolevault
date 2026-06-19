@@ -29,13 +29,16 @@ export function Login() {
   }, [state.googleClientId, refresh]);
 
   return (
-    <div className="login">
-      <div className="login-card">
-        <h1>ConsoleVault</h1>
-        <p>Sign in with an authorized admin Google account.</p>
-        <div ref={buttonRef} />
-        {!state.googleClientId && <p className="muted">Loading sign-in…</p>}
-        {error && <p className="error">{error}</p>}
+    <div className="grid min-h-screen place-items-center bg-bg p-4 text-fg">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl bg-accent text-lg font-bold text-accent-fg">
+          CV
+        </div>
+        <h1 className="text-xl font-semibold">ConsoleVault</h1>
+        <p className="mt-1 text-sm text-muted">Sign in with an authorized admin Google account.</p>
+        <div className="mt-6 flex justify-center" ref={buttonRef} />
+        {!state.googleClientId && <p className="mt-3 text-sm text-muted">Loading sign-in…</p>}
+        {error && <p className="mt-3 text-sm text-bad">{error}</p>}
       </div>
     </div>
   );

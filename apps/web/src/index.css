@@ -1,231 +1,101 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode: `dark:` applies when an ancestor has the `dark` class. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic design tokens — flip under `.dark`. Referenced by @theme below so the same utility
+   (e.g. `bg-surface`) resolves to the right value in either theme. */
 :root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f3f4f6;
   --fg: #1f2328;
   --muted: #6b7280;
   --line: #e5e7eb;
-  --bg: #f7f8fa;
   --accent: #1a73e8;
-  --green: #137333;
-  --amber: #b06000;
-  --red: #c5221f;
-  --gray: #9aa0a6;
+  --accent-fg: #ffffff;
+  --ok: #137333;
+  --warn: #b06000;
+  --bad: #c5221f;
+  --fresh: #0e9384;
 }
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
-  color: var(--fg);
-  background: var(--bg);
-}
-a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.muted {
-  color: var(--muted);
-}
-.error {
-  color: var(--red);
-}
-button {
-  font: inherit;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  background: white;
-  border-radius: 6px;
-  cursor: pointer;
-}
-button.primary {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-input,
-select {
-  font: inherit;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+.dark {
+  --bg: #0e1014;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --fg: #e6e8eb;
+  --muted: #9aa1ad;
+  --line: #2a2f3a;
+  --accent: #5b9bff;
+  --accent-fg: #0b1220;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --fresh: #2dd4bf;
 }
 
-/* layout */
-.app {
-  min-height: 100vh;
-}
-header.topbar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 10px 20px;
-  background: white;
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-}
-header.topbar .brand {
-  font-weight: 700;
-}
-header.topbar nav {
-  display: flex;
-  gap: 14px;
-}
-header.topbar nav a {
-  color: var(--muted);
-  padding: 4px 2px;
-}
-header.topbar nav a.active {
-  color: var(--fg);
-  border-bottom: 2px solid var(--accent);
-}
-header.topbar .spacer {
-  flex: 1;
-}
-main.content {
-  padding: 22px;
-  max-width: 1100px;
-  margin: 0 auto;
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-fresh: var(--fresh);
 }
 
-.login {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-}
-.login-card {
-  background: white;
-  padding: 32px 40px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  text-align: center;
-}
-.center {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  color: var(--muted);
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    margin: 0;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
+    @apply bg-bg text-fg antialiased;
+  }
+  * {
+    border-color: var(--line);
+  }
 }
 
-table {
-  border-collapse: collapse;
-  width: 100%;
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-th,
-td {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}
-th {
-  background: #fafbfc;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: white;
-  font-size: 12px;
-}
-.tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  background: #eef1f5;
-  color: #444;
-}
-
-/* heatmap */
-.heatmap-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0;
-}
-.heatmap-row .label {
-  width: 150px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.heatmap-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-}
-.cell {
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
-  background: #e9ecef;
-}
-.cell.collected_with_data {
-  background: var(--green);
-}
-.cell.collected_fresh {
-  background: #26a69a;
-}
-.cell.collected_no_data {
-  background: #cfe3d4;
-}
-.cell.pending {
-  background: #fde2c4;
-}
-.cell.queued {
-  background: #ffd699;
-}
-.cell.error {
-  background: var(--red);
-}
-.cell.not_planned {
-  background: #eceff1;
-}
-.cell.skipped {
-  background: #d7cce0;
-}
-.legend {
-  display: flex;
-  gap: 14px;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.card {
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-label.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--muted);
+/* Coverage heatmap cells — driven by status class names from Heatmap.tsx. */
+@layer components {
+  .hm {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--surface-2);
+  }
+  .hm.collected_with_data {
+    background: var(--ok);
+  }
+  .hm.collected_fresh {
+    background: var(--fresh);
+  }
+  .hm.collected_no_data {
+    background: color-mix(in srgb, var(--ok) 30%, transparent);
+  }
+  .hm.pending {
+    background: color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+  .hm.queued {
+    background: color-mix(in srgb, var(--warn) 70%, transparent);
+  }
+  .hm.error {
+    background: var(--bad);
+  }
+  .hm.skipped {
+    background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+  }
+  .hm.not_planned {
+    background: var(--surface-2);
+  }
 }

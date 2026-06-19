@@ -48,13 +48,31 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
   app.get('/api/properties', async () => propertyRepo.list());
 
+  // Bulk track / untrack (Stage 7 — Properties workflow).
+  app.post('/api/properties/bulk', async (req) => {
+    const body = (req.body ?? {}) as { ids?: string[]; included?: boolean };
+    if (!Array.isArray(body.ids) || typeof body.included !== 'boolean') {
+      throw new HttpError(400, 'ids[] and included are required');
+    }
+    const included = body.included;
+    await Promise.all(body.ids.map((id) => propertyRepo.setIncluded(id, included)));
+    return { updated: body.ids.length };
+  });
+
   app.patch<{ Params: IdParams }>('/api/properties/:id', async (req) => {
-    const body = (req.body ?? {}) as { included?: boolean; config?: CollectionConfig };
+    const body = (req.body ?? {}) as {
+      included?: boolean;
+      config?: CollectionConfig;
+      preferredAccountId?: string;
+    };
     if (typeof body.included === 'boolean') {
       await propertyRepo.setIncluded(req.params.id, body.included);
     }
     if (body.config) {
       await propertyRepo.updateConfig(req.params.id, body.config);
+    }
+    if (body.preferredAccountId) {
+      await propertyRepo.setPreferredAccount(req.params.id, body.preferredAccountId);
     }
     const property = await propertyRepo.get(req.params.id);
     if (!property) throw new HttpError(404, 'Property not found');

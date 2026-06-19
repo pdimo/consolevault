@@ -109,6 +109,21 @@ export interface Property {
   discoveredAt?: string;
   /** Most recent discovery run that still listed this property (ISO 8601). */
   lastSeenAt?: string;
+  /** Denormalized collection status (stamped by the collector) for fast list rendering (Stage 7). */
+  status?: PropertyStatus;
+}
+
+/** Lightweight, denormalized per-property collection status for the Properties list (Stage 7). */
+export interface PropertyStatus {
+  /** Most recent data_date collected WITH data. */
+  lastCollectedDate?: string;
+  /** Finality of that most-recent collected day. */
+  dataState?: 'final' | 'fresh';
+  /** When the collector last wrote data for this property (ISO 8601). */
+  lastCollectedAt?: string;
+  /** Most recent terminal error message + when it occurred (ISO 8601). */
+  lastError?: string;
+  lastErrorAt?: string;
 }
 
 /** An app-level property group (no native GSC grouping exists — SPEC §4, §6.4). */

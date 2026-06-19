@@ -78,6 +78,11 @@ export const api = {
   listProperties: () => http<Property[]>('/api/properties'),
   patchProperty: (id: string, patch: Partial<Property>) =>
     http<Property>(`/api/properties/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  bulkSetIncluded: (ids: string[], included: boolean) =>
+    http<{ updated: number }>('/api/properties/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids, included }),
+    }),
   coverage: (id: string) => http<Coverage>(`/api/properties/${id}/coverage`),
   anomaly: (id: string) => http<{ anomalyPct: number | null }>(`/api/properties/${id}/anomaly`),
   recollect: (id: string, date: string, searchType: string, aggregation: string) =>
@@ -113,6 +118,19 @@ export const api = {
   getSettings: () => http<Settings>('/api/settings'),
   putSettings: (s: Settings) =>
     http<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
+
+  // overview
+  getOverview: () =>
+    http<{
+      accounts: { total: number; healthy: number };
+      properties: { tracking: number; available: number; total: number };
+      rows: number;
+      estMonthlyStorageUsd: number;
+      apiCallsToday: number;
+      openErrors: number;
+      latestFinalDate: string | null;
+      activity: { date: string; tasks: number; rows: number }[];
+    }>('/api/overview'),
 
   // quota
   getQuota: () =>

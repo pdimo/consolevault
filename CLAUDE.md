@@ -58,7 +58,10 @@ You MAY run `gcloud` and `terraform` yourself. BUT:
 ## Tech stack (per SPEC.md)
 
 - Monorepo: **Turborepo + pnpm**, Node 20+, strict TypeScript.
-  - `apps/web` — React + Vite SPA (single-admin, behind login).
+  - `apps/web` — React + Vite SPA (single-admin, behind login). **Tailwind v4** design system +
+    light/dark theme + **Recharts**; app shell + primitives in `src/components`. See `docs/UI.md` —
+    use the semantic utilities (`bg-surface`/`text-muted`/…), `useToast`/`useConfirm`, and the shared
+    primitives rather than raw tables/inline styles.
   - `apps/api` — Cloud Run control-plane API.
   - `apps/workers` — Cloud Run workers (discover, collector, log-writer).
   - `packages/types` — shared interfaces (Account, Property, Task, CollectionConfig,

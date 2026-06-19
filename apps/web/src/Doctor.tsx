@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type DoctorResult } from './api';
+import { Badge, Button, PageHeader, Spinner, Table, Td, Th } from './components/ui';
 
 export default function Doctor() {
   const [result, setResult] = useState<DoctorResult | null>(null);
@@ -22,41 +23,43 @@ export default function Doctor() {
   }, []);
 
   return (
-    <section>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h2>Verify setup</h2>
-        <button onClick={() => void run()} disabled={running}>
-          {running ? 'Checking…' : 'Re-run checks'}
-        </button>
-      </div>
-      {error && <p className="error">{error}</p>}
-      {result && (
-        <table>
+    <div>
+      <PageHeader
+        title="Health"
+        description="Automated checks that your deployment is wired up and collecting."
+        actions={
+          <Button onClick={() => void run()} loading={running}>
+            Re-run checks
+          </Button>
+        }
+      />
+      {error && <p className="mb-3 text-sm text-bad">{error}</p>}
+      {!result ? (
+        <div className="grid place-items-center py-16 text-muted">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : (
+        <Table>
           <thead>
             <tr>
-              <th>Check</th>
-              <th></th>
-              <th>Detail</th>
+              <Th>Check</Th>
+              <Th>Status</Th>
+              <Th>Detail</Th>
             </tr>
           </thead>
           <tbody>
             {result.checks.map((c) => (
               <tr key={c.name}>
-                <td>{c.name}</td>
-                <td>
-                  <span
-                    className="badge"
-                    style={{ background: c.ok ? 'var(--green)' : 'var(--red)' }}
-                  >
-                    {c.ok ? 'OK' : 'FAIL'}
-                  </span>
-                </td>
-                <td className="muted">{c.detail}</td>
+                <Td className="font-medium">{c.name}</Td>
+                <Td>
+                  <Badge tone={c.ok ? 'ok' : 'bad'}>{c.ok ? 'OK' : 'FAIL'}</Badge>
+                </Td>
+                <Td className="text-muted">{c.detail}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
-    </section>
+    </div>
   );
 }

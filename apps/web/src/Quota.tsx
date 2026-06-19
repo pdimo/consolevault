@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { Badge, Card, PageHeader, Spinner, StatCard, Table, Td, Th } from './components/ui';
+import { Bars } from './components/charts';
 
 type Quota = Awaited<ReturnType<typeof api.getQuota>>;
 
@@ -18,111 +20,155 @@ export default function Quota() {
       .catch((e) => setErr(String(e)));
   }, []);
 
-  if (err) return <p className="muted">Could not load quota: {err}</p>;
-  if (!q) return <p className="muted">Loading…</p>;
+  if (err) return <p className="text-sm text-muted">Could not load quota: {err}</p>;
+  if (!q) {
+    return (
+      <div className="grid place-items-center py-20 text-muted">
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
 
-  // Plain-language verdict: GSC quota is volume-huge; the practical limit is per-account run time.
   const pct = q.capacity.projectQpdUsedPct;
   const verdict =
     pct < 1
-      ? 'Plenty of headroom — API quota is nowhere near a constraint.'
+      ? {
+          tone: 'ok' as const,
+          text: 'Plenty of headroom — API quota is nowhere near a constraint.',
+        }
       : pct < 25
-        ? 'Comfortable headroom.'
+        ? { tone: 'ok' as const, text: 'Comfortable headroom.' }
         : pct < 75
-          ? 'Moderate usage — keep an eye on it.'
-          : 'Approaching the project daily quota — consider spreading collection.';
+          ? { tone: 'warn' as const, text: 'Moderate usage — keep an eye on it.' }
+          : {
+              tone: 'bad' as const,
+              text: 'Approaching the project daily quota — spread collection.',
+            };
 
   return (
-    <section>
-      <h2>API quota &amp; capacity</h2>
-      <p className="muted">
-        How much of Google&apos;s Search Console API quota you&apos;re using, and how many more
-        properties you could add. Usage is measured from actual API calls and accrues from when this
-        feature shipped.
-      </p>
+    <div>
+      <PageHeader
+        title="API quota & capacity"
+        description="How much of Google's Search Console API quota you're using, and how many more properties you could add. Measured from actual API calls."
+      />
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Capacity</h3>
-        <p style={{ fontSize: 18 }}>
-          You can add roughly{' '}
-          <strong>
-            {q.capacity.estMoreProperties === null
-              ? '—'
-              : `${fmt(q.capacity.estMoreProperties)} more properties`}
-          </strong>{' '}
-          before approaching Google&apos;s per-project daily quota.
-        </p>
-        <p className="muted">
-          {verdict} Today you&apos;ve used <strong>{fmt(q.today.total)}</strong> API calls —{' '}
-          {q.capacity.projectQpdUsedPct}% of the {fmt(q.limits.perProjectQpd)}/day project limit —
-          across {q.capacity.activeProperties} included properties (~
-          {q.capacity.avgCallsPerProperty} calls/property/day). Per account we dispatch at{' '}
-          {fmt(q.dispatchQpmPerAccount)} QPM, leaving {q.perUserHeadroomPct}% headroom under the{' '}
-          {fmt(q.limits.perUserQpm)} QPM per-user cap. The practical limit is daily-run time per
-          account, not quota.
-        </p>
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Capacity (more sites)"
+          value={q.capacity.estMoreProperties === null ? '—' : fmt(q.capacity.estMoreProperties)}
+          hint="before the per-project daily quota"
+          tone="accent"
+        />
+        <StatCard
+          label="Calls today"
+          value={fmt(q.today.total)}
+          hint={`${q.capacity.projectQpdUsedPct}% of project/day`}
+        />
+        <StatCard
+          label="Active properties"
+          value={q.capacity.activeProperties}
+          hint={`~${q.capacity.avgCallsPerProperty} calls/property`}
+        />
+        <StatCard
+          label="Per-user headroom"
+          value={`${q.perUserHeadroomPct}%`}
+          hint={`dispatch ${fmt(q.dispatchQpmPerAccount)} QPM`}
+          tone="ok"
+        />
       </div>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Usage by account (today / 7-day)</h3>
-        <table className="grid">
+      <Card className="mb-5">
+        <div className="flex items-center gap-2">
+          <Badge tone={verdict.tone}>
+            {verdict.tone === 'ok' ? 'Healthy' : verdict.tone === 'warn' ? 'Watch' : 'High'}
+          </Badge>
+          <p className="text-sm">{verdict.text}</p>
+        </div>
+        <p className="mt-2 text-sm text-muted">
+          The practical limit is daily-run time per account, not quota. To go faster, spread
+          properties across more Google accounts (each is an independent{' '}
+          {fmt(q.dispatchQpmPerAccount)} QPM lane).
+        </p>
+      </Card>
+
+      {q.today.byAccount.length > 0 && (
+        <Card title="Calls by account (today vs 7-day)" className="mb-5">
+          <Bars
+            data={q.today.byAccount.map((a) => ({
+              name: a.displayName.length > 14 ? a.displayName.slice(0, 13) + '…' : a.displayName,
+              today: a.callsToday,
+              week: a.calls7d,
+            }))}
+            xKey="name"
+            bars={[
+              { key: 'today', name: 'Today', color: 'var(--accent)' },
+              { key: 'week', name: '7-day', color: 'var(--fresh)' },
+            ]}
+          />
+        </Card>
+      )}
+
+      <Card title="Usage by account (today / 7-day)" className="mb-5" bodyClassName="p-0">
+        <Table className="rounded-none border-0">
           <thead>
             <tr>
-              <th>Account</th>
-              <th style={{ textAlign: 'right' }}>Properties</th>
-              <th style={{ textAlign: 'right' }}>Calls today</th>
-              <th style={{ textAlign: 'right' }}>Tasks today</th>
-              <th style={{ textAlign: 'right' }}>Calls (7d)</th>
+              <Th>Account</Th>
+              <Th className="text-right">Properties</Th>
+              <Th className="text-right">Calls today</Th>
+              <Th className="text-right">Tasks today</Th>
+              <Th className="text-right">Calls (7d)</Th>
             </tr>
           </thead>
           <tbody>
             {q.today.byAccount.length === 0 && (
               <tr>
-                <td colSpan={5} className="muted">
+                <Td className="px-3 py-6 text-muted">
                   No API usage recorded yet — run a collection to populate this.
-                </td>
+                </Td>
               </tr>
             )}
             {q.today.byAccount.map((a) => (
               <tr key={a.accountId ?? 'unattributed'}>
-                <td>{a.displayName}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(a.properties)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(a.callsToday)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(a.tasksToday)}</td>
-                <td style={{ textAlign: 'right' }}>{fmt(a.calls7d)}</td>
+                <Td className="font-medium">{a.displayName}</Td>
+                <Td className="text-right">{fmt(a.properties)}</Td>
+                <Td className="text-right">{fmt(a.callsToday)}</Td>
+                <Td className="text-right">{fmt(a.tasksToday)}</Td>
+                <Td className="text-right">{fmt(a.calls7d)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Google limits (Search Analytics)</h3>
-        <table className="grid">
-          <tbody>
-            <tr>
-              <td>Per user</td>
-              <td style={{ textAlign: 'right' }}>{fmt(q.limits.perUserQpm)} QPM</td>
-            </tr>
-            <tr>
-              <td>Per site</td>
-              <td style={{ textAlign: 'right' }}>{fmt(q.limits.perSiteQpm)} QPM</td>
-            </tr>
-            <tr>
-              <td>Per project</td>
-              <td style={{ textAlign: 'right' }}>
-                {fmt(q.limits.perProjectQpm)} QPM · {fmt(q.limits.perProjectQpd)} QPD
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p className="muted" style={{ marginTop: 8 }}>
+      <Card title="Google limits (Search Analytics)">
+        <dl className="grid grid-cols-3 gap-4 text-sm">
+          <div>
+            <dt className="text-muted">Per user</dt>
+            <dd className="font-semibold">{fmt(q.limits.perUserQpm)} QPM</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Per site</dt>
+            <dd className="font-semibold">{fmt(q.limits.perSiteQpm)} QPM</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Per project</dt>
+            <dd className="font-semibold">
+              {fmt(q.limits.perProjectQpm)} QPM · {fmt(q.limits.perProjectQpd)} QPD
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-muted">
           Source:{' '}
-          <a href={q.limits.source} target="_blank" rel="noreferrer">
+          <a
+            className="text-accent hover:underline"
+            href={q.limits.source}
+            target="_blank"
+            rel="noreferrer"
+          >
             developers.google.com/webmaster-tools/limits
           </a>
         </p>
-      </div>
-    </section>
+      </Card>
+    </div>
   );
 }

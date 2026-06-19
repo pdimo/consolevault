@@ -1,6 +1,9 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
+import { AppShell } from './components/AppShell';
+import { Spinner } from './components/ui';
 import { Login } from './Login';
+import Overview from './Overview';
 import Accounts from './Accounts';
 import Properties from './Properties';
 import Property from './Property';
@@ -11,52 +14,35 @@ import Costs from './Costs';
 import Quota from './Quota';
 import Settings from './Settings';
 
-const NAV = [
-  ['/accounts', 'Accounts'],
-  ['/properties', 'Properties'],
-  ['/groups', 'Groups'],
-  ['/jobs', 'Jobs'],
-  ['/doctor', 'Doctor'],
-  ['/costs', 'Costs'],
-  ['/quota', 'Quota'],
-  ['/settings', 'Settings'],
-] as const;
-
 export default function App() {
-  const { state, signOut } = useAuth();
+  const { state } = useAuth();
 
-  if (state.status === 'loading') return <div className="center">Loading…</div>;
+  if (state.status === 'loading') {
+    return (
+      <div className="grid min-h-screen place-items-center bg-bg text-muted">
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
   if (state.status !== 'authed') return <Login />;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">ConsoleVault</span>
-        <nav>
-          {NAV.map(([to, label]) => (
-            <NavLink key={to} to={to} className={({ isActive }) => (isActive ? 'active' : '')}>
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-        <span className="spacer" />
-        <span className="muted">{state.email}</span>
-        <button onClick={() => void signOut()}>Sign out</button>
-      </header>
-      <main className="content">
-        <Routes>
-          <Route path="/" element={<Navigate to="/accounts" replace />} />
-          <Route path="/accounts" element={<Accounts />} />
-          <Route path="/properties" element={<Properties />} />
-          <Route path="/properties/:id" element={<Property />} />
-          <Route path="/groups" element={<Groups />} />
-          <Route path="/jobs" element={<Jobs />} />
-          <Route path="/doctor" element={<Doctor />} />
-          <Route path="/costs" element={<Costs />} />
-          <Route path="/quota" element={<Quota />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </main>
-    </div>
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<Navigate to="/overview" replace />} />
+        <Route path="/overview" element={<Overview />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/properties" element={<Properties />} />
+        <Route path="/properties/:id" element={<Property />} />
+        <Route path="/groups" element={<Groups />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/health" element={<Doctor />} />
+        <Route path="/doctor" element={<Navigate to="/health" replace />} />
+        <Route path="/costs" element={<Costs />} />
+        <Route path="/quota" element={<Quota />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="*" element={<Navigate to="/overview" replace />} />
+      </Routes>
+    </AppShell>
   );
 }
