@@ -11,6 +11,7 @@ export const COLLECTIONS = {
   tasks: 'tasks',
   groups: 'groups',
   settings: 'settings',
+  probeCache: 'probe_cache',
 } as const;
 
 let db: Firestore | undefined;

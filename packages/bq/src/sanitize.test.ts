@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeTableName } from './sanitize.js';
+import { disambiguatedTableName, sanitizeTableName } from './sanitize.js';
 
 describe('sanitizeTableName', () => {
   it('prefixes domain properties and strips the sc-domain scheme', () => {
@@ -32,5 +32,23 @@ describe('sanitizeTableName', () => {
 
   it('collapses non-alphanumerics (incl. IDN chars) to single underscores', () => {
     expect(sanitizeTableName('sc-domain:münchen.de')).toBe('domain_m_nchen_de');
+  });
+});
+
+describe('disambiguatedTableName', () => {
+  // Two distinct URLs that sanitize to the SAME base (path separators collapse identically).
+  const a = 'https://example.com/a-b';
+  const b = 'https://example.com/a_b';
+
+  it('the two URLs collide on the base name', () => {
+    expect(sanitizeTableName(a)).toBe(sanitizeTableName(b));
+  });
+
+  it('produces distinct, base-prefixed, stable names for colliding URLs', () => {
+    const da = disambiguatedTableName(a);
+    const db = disambiguatedTableName(b);
+    expect(da).not.toBe(db);
+    expect(da.startsWith(sanitizeTableName(a))).toBe(true);
+    expect(disambiguatedTableName(a)).toBe(da); // deterministic
   });
 });

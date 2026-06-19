@@ -55,13 +55,27 @@ export default function Jobs() {
     await loadTasks(status);
   };
 
+  const requeueErrors = async () => {
+    setMsg('Requeuing errors…');
+    try {
+      const r = await api.requeueErrors();
+      setMsg(`Requeued ${r.requeued} error task(s) → pending. Run the pipeline to collect them.`);
+      await loadTasks(status);
+    } catch (e) {
+      setMsg(String(e));
+    }
+  };
+
   return (
     <section>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <h2>Jobs</h2>
-        <button className="primary" onClick={() => void run()}>
-          Run pipeline now
-        </button>
+        <div className="row">
+          <button onClick={() => void requeueErrors()}>Requeue all errors</button>
+          <button className="primary" onClick={() => void run()}>
+            Run pipeline now
+          </button>
+        </div>
       </div>
       {msg && <p className="muted">{msg}</p>}
 

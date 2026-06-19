@@ -67,7 +67,13 @@ the **alert email** (each operator sets their own — the app provisions the Mon
   risk.)
 - **Costs** — the **Costs** page shows BigQuery storage by dataset and an estimated monthly storage
   cost; collection itself is near-free. A Cloud Billing budget alerts at 50/90/100% so you never get
-  a surprise bill.
+  a surprise bill. Optionally enable **real spend** via billing export
+  ([docs/BILLING-EXPORT.md](./docs/BILLING-EXPORT.md)).
+- **Materialized group views** — opt-in per group for faster BI
+  ([docs/MATERIALIZED-VIEWS.md](./docs/MATERIALIZED-VIEWS.md)).
+- **Quota & capacity** — the **Quota** page shows measured Search Console API usage against Google's
+  limits and "how many more properties you can add" (almost always: far more than you'll need). See
+  **[docs/QUOTA.md](./docs/QUOTA.md)** and **[docs/API-EFFICIENCY.md](./docs/API-EFFICIENCY.md)**.
 - **Freshness** — see below; there is no look-back window to tune.
 
 ## Data model

@@ -28,8 +28,17 @@ main:
           auth:
             type: OIDC
         result: enqueue_result
+    - refresh_materialized:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/refresh-materialized
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: materialized_result
     - done:
         return:
           discover: ${discover_result.body}
           reconcile: ${reconcile_result.body}
           enqueue: ${enqueue_result.body}
+          materialized: ${materialized_result.body}

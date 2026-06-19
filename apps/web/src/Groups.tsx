@@ -39,6 +39,12 @@ export default function Groups() {
       <h2>Property groups</h2>
       <p className="muted">
         App-level groups union members at query time (a generated view in <code>gsc_views</code>).
+        Toggle <strong>Materialized</strong> to also keep a refreshed TABLE (
+        <code>group_&lt;id&gt;_mat</code>) for faster BI — see{' '}
+        <a href="https://github.com/pdimo/consolevault/blob/main/docs/MATERIALIZED-VIEWS.md">
+          docs
+        </a>
+        .
       </p>
       {error && <p className="error">{error}</p>}
 
@@ -48,6 +54,7 @@ export default function Groups() {
             <th>Name</th>
             <th>Members</th>
             <th>View</th>
+            <th>Materialized</th>
             <th></th>
           </tr>
         </thead>
@@ -67,13 +74,25 @@ export default function Groups() {
                 <code>{g.viewId ?? '—'}</code>
               </td>
               <td>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={g.materialized ?? false}
+                    onChange={() =>
+                      void api.patchGroup(g.id, { materialized: !g.materialized }).then(load)
+                    }
+                  />{' '}
+                  {g.materialized ? <code>{g.viewId}_mat</code> : 'off'}
+                </label>
+              </td>
+              <td>
                 <button onClick={() => void api.deleteGroup(g.id).then(load)}>Delete</button>
               </td>
             </tr>
           ))}
           {groups.length === 0 && (
             <tr>
-              <td colSpan={4} className="muted">
+              <td colSpan={5} className="muted">
                 No groups yet.
               </td>
             </tr>

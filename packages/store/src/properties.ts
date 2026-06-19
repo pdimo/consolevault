@@ -8,7 +8,7 @@
 
 import type { Firestore } from '@google-cloud/firestore';
 import type { CollectionConfig, Property } from '@consolevault/types';
-import { sanitizeTableName } from '@consolevault/bq';
+import { disambiguatedTableName, sanitizeTableName } from '@consolevault/bq';
 import { derivePropertyType, type GscSite } from '@consolevault/gsc';
 import { COLLECTIONS, getFirestore } from './firestore.js';
 
@@ -89,11 +89,21 @@ export class PropertyRepository {
   /** Upsert discovered sites for an account; merges, never duplicates. Returns the count seen. */
   async upsertFromDiscovery(accountId: string, sites: GscSite[], at: string): Promise<number> {
     for (const site of sites) {
-      const d = discoveredFromSite(accountId, site, at);
-      const ref = this.col().doc(d.id);
       await this.db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        const existing = snap.exists ? (snap.data() as Property) : undefined;
+        let d = discoveredFromSite(accountId, site, at);
+        let ref = this.col().doc(d.id);
+        let snap = await tx.get(ref);
+        let existing = snap.exists ? (snap.data() as Property) : undefined;
+        // Collision: the base table name is already taken by a DIFFERENT siteUrl (e.g. paths that
+        // sanitize identically, or IDN variants). Disambiguate with a stable per-siteUrl hash so the
+        // two sites get distinct tables/docs instead of silently merging.
+        if (existing && existing.siteUrl !== d.siteUrl) {
+          const disId = disambiguatedTableName(site.siteUrl);
+          d = { ...d, id: disId, sanitizedTableName: disId };
+          ref = this.col().doc(disId);
+          snap = await tx.get(ref);
+          existing = snap.exists ? (snap.data() as Property) : undefined;
+        }
         tx.set(ref, mergeDiscoveredProperty(existing, d));
       });
     }

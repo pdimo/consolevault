@@ -77,6 +77,42 @@ export default function Costs() {
         Retention is controlled by the <code>default_partition_expiry_days</code> Terraform
         variable.
       </p>
+
+      {costs.spend ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>Actual spend — last 30 days (billing export)</h3>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th style={{ textAlign: 'right' }}>Cost ({costs.spend.currency})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {costs.spend.byService.map((s) => (
+                <tr key={s.service}>
+                  <td>{s.service}</td>
+                  <td style={{ textAlign: 'right' }}>{s.cost.toFixed(2)}</td>
+                </tr>
+              ))}
+              <tr style={{ fontWeight: 600, borderTop: '2px solid #ccc' }}>
+                <td>Total</td>
+                <td style={{ textAlign: 'right' }}>
+                  {costs.spend.total.toFixed(2)} {costs.spend.currency}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="muted">
+          Tip: enable Cloud Billing export to see <em>actual</em> spend here — see{' '}
+          <a href="https://github.com/pdimo/consolevault/blob/main/docs/BILLING-EXPORT.md">
+            docs/BILLING-EXPORT.md
+          </a>
+          .
+        </p>
+      )}
     </section>
   );
 }

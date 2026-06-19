@@ -30,6 +30,7 @@ export interface TaskLogRow {
   status: string;
   attempt: number;
   row_count?: number;
+  api_calls?: number;
   error_message?: string;
   logged_at: string;
 }
@@ -84,6 +85,84 @@ export class Warehouse {
   }
 
   /**
+   * Per-account GSC API usage from task_logs (Quota dashboard, Stage 6): calls today + over 7 days,
+   * with Pacific-Time day boundaries. `api_calls` is NULL on pre-Stage-6 rows → counted as 0, so
+   * usage accrues from when this ships. Returns empty if the log table doesn't exist yet.
+   */
+  async apiUsage(): Promise<{
+    todayTotal: number;
+    last7dTotal: number;
+    byAccount: Array<{
+      accountId: string | null;
+      callsToday: number;
+      calls7d: number;
+      tasksToday: number;
+    }>;
+  }> {
+    if (!(await this.tableExists(DATASETS.taskLogs, 'attempts'))) {
+      return { todayTotal: 0, last7dTotal: 0, byAccount: [] };
+    }
+    const [rows] = await this.bq.query({
+      query: `SELECT account_id,
+          SUM(IF(DATE(logged_at, 'America/Los_Angeles') = CURRENT_DATE('America/Los_Angeles'), IFNULL(api_calls, 0), 0)) AS calls_today,
+          SUM(IFNULL(api_calls, 0)) AS calls_7d,
+          COUNT(DISTINCT IF(DATE(logged_at, 'America/Los_Angeles') = CURRENT_DATE('America/Los_Angeles'), task_id, NULL)) AS tasks_today
+        FROM ${this.tableRef(DATASETS.taskLogs, 'attempts')}
+        WHERE logged_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+        GROUP BY account_id`,
+      location: this.cfg.location,
+    });
+    const byAccount = (rows as Array<Record<string, unknown>>).map((r) => ({
+      accountId: (r.account_id as string | null) ?? null,
+      callsToday: Number(r.calls_today ?? 0),
+      calls7d: Number(r.calls_7d ?? 0),
+      tasksToday: Number(r.tasks_today ?? 0),
+    }));
+    return {
+      todayTotal: byAccount.reduce((s, a) => s + a.callsToday, 0),
+      last7dTotal: byAccount.reduce((s, a) => s + a.calls7d, 0),
+      byAccount,
+    };
+  }
+
+  /**
+   * Real recent spend from a Cloud Billing export dataset (SPEC §11, opt-in). Sums the standard
+   * `gcp_billing_export_v1_*` table over the last 30 days, by service. Returns null if the export
+   * isn't set up (dataset/table missing) so the Costs panel falls back to the storage estimate.
+   */
+  async billingSpend(
+    datasetId: string,
+  ): Promise<{
+    currency: string;
+    total: number;
+    byService: Array<{ service: string; cost: number }>;
+  } | null> {
+    try {
+      const [rows] = await this.bq.query({
+        query: `SELECT service.description AS service, currency, SUM(cost) AS cost
+          FROM \`${this.cfg.projectId}.${datasetId}.gcp_billing_export_v1_*\`
+          WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+          GROUP BY service, currency
+          ORDER BY cost DESC`,
+        location: this.cfg.location,
+      });
+      const list = rows as Array<{ service?: string; currency?: string; cost?: number }>;
+      if (list.length === 0) return null;
+      const byService = list.map((r) => ({
+        service: r.service ?? 'unknown',
+        cost: Number(Number(r.cost ?? 0).toFixed(2)),
+      }));
+      return {
+        currency: list[0]?.currency ?? 'USD',
+        total: Number(byService.reduce((s, r) => s + r.cost, 0).toFixed(2)),
+        byService,
+      };
+    } catch {
+      return null; // export not configured / table absent
+    }
+  }
+
+  /**
    * Create a table (idempotently) — DATE-partitioned + clustered when requested. Returns true if it
    * actually created the table (false if it already existed), so callers can do one-time setup
    * (e.g. wildcard-view creation) only on a property's first-ever table.
@@ -96,7 +175,10 @@ export class Warehouse {
   ): Promise<boolean> {
     const table = this.bq.dataset(datasetId).table(tableId);
     const [exists] = await table.exists();
-    if (exists) return false;
+    if (exists) {
+      await this.reconcileColumns(datasetId, tableId, fields);
+      return false;
+    }
     const metadata: TableMetadata = { schema: toBigQuerySchema(fields) };
     if (opts.partitionField) {
       metadata.timePartitioning = { type: 'DAY', field: opts.partitionField };
@@ -112,6 +194,35 @@ export class Warehouse {
       // ALREADY_EXISTS (409). The table now exists either way, so treat it as success.
       if ((err as { code?: number }).code !== 409) throw err;
       return false;
+    }
+  }
+
+  // Self-healing schema evolution: when a code release adds a NULLABLE column to a schema, add it to
+  // any pre-existing table so inserts don't fail on upgraded installs. Once per table per process
+  // (in-memory guard), best-effort (a concurrent reconcile that loses the race is harmless).
+  private readonly reconciled = new Set<string>();
+  private async reconcileColumns(
+    datasetId: string,
+    tableId: string,
+    fields: readonly BqField[],
+  ): Promise<void> {
+    const key = `${datasetId}.${tableId}`;
+    if (this.reconciled.has(key)) return;
+    this.reconciled.add(key);
+    try {
+      const table = this.bq.dataset(datasetId).table(tableId);
+      const [meta] = await table.getMetadata();
+      const have = new Set((meta.schema?.fields ?? []).map((f: { name: string }) => f.name));
+      const missing = fields.filter((f) => !have.has(f.name));
+      if (missing.length === 0) return;
+      meta.schema.fields = [
+        ...(meta.schema.fields ?? []),
+        // Added columns must be NULLABLE/REPEATED in BigQuery; force NULLABLE for safety.
+        ...missing.map((f) => ({ name: f.name, type: f.type, mode: 'NULLABLE' })),
+      ];
+      await table.setMetadata({ schema: meta.schema });
+    } catch {
+      this.reconciled.delete(key); // let a later attempt retry
     }
   }
 
@@ -232,6 +343,22 @@ export class Warehouse {
   async tableExists(datasetId: string, tableId: string): Promise<boolean> {
     const [exists] = await this.bq.dataset(datasetId).table(tableId).exists();
     return exists;
+  }
+
+  /** Create or replace a materialized TABLE in gsc_views from a SELECT (materialized group views). */
+  async createOrReplaceTable(tableId: string, selectSql: string): Promise<void> {
+    await this.bq.query({
+      query: `CREATE OR REPLACE TABLE \`${this.cfg.projectId}.${DATASETS.views}.${tableId}\` AS ${selectSql}`,
+      location: this.cfg.location,
+    });
+  }
+
+  /** Drop a table in gsc_views if it exists (unmaterialize / group deletion). */
+  async dropTableIfExists(tableId: string): Promise<void> {
+    await this.bq.query({
+      query: `DROP TABLE IF EXISTS \`${this.cfg.projectId}.${DATASETS.views}.${tableId}\``,
+      location: this.cfg.location,
+    });
   }
 
   /** Drop a view in gsc_views if it exists (group deletion). */

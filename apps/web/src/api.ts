@@ -93,6 +93,7 @@ export const api = {
     http<LogRow[]>(`/api/logs${propertyId ? `?propertyId=${propertyId}` : ''}`),
   runPipeline: () =>
     http<{ execution: string; state: string }>('/api/pipeline/run', { method: 'POST' }),
+  requeueErrors: () => http<{ requeued: number }>('/api/tasks/requeue-errors', { method: 'POST' }),
   queues: () =>
     http<{ name: string; state: string; maxDispatchesPerSecond: number }[]>('/api/queues'),
   doctor: () => http<DoctorResult>('/api/doctor'),
@@ -113,11 +114,48 @@ export const api = {
   putSettings: (s: Settings) =>
     http<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
 
+  // quota
+  getQuota: () =>
+    http<{
+      limits: {
+        perUserQpm: number;
+        perSiteQpm: number;
+        perProjectQpm: number;
+        perProjectQpd: number;
+        source: string;
+      };
+      dispatchQpmPerAccount: number;
+      perUserHeadroomPct: number;
+      today: {
+        total: number;
+        byAccount: {
+          accountId: string | null;
+          displayName: string;
+          properties: number;
+          callsToday: number;
+          calls7d: number;
+          tasksToday: number;
+        }[];
+      };
+      last7d: { total: number; avgPerDay: number };
+      capacity: {
+        activeProperties: number;
+        avgCallsPerProperty: number;
+        projectQpdUsedPct: number;
+        estMoreProperties: number | null;
+      };
+    }>('/api/quota'),
+
   // costs
   getCosts: () =>
     http<{
       datasets: { dataset: string; tables: number; rows: number; bytes: number }[];
       totalBytes: number;
       estMonthlyStorageUsd: number;
+      spend: {
+        currency: string;
+        total: number;
+        byService: { service: string; cost: number }[];
+      } | null;
     }>('/api/costs'),
 };

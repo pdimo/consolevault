@@ -7,7 +7,14 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { ExecutionsClient } from '@google-cloud/workflows';
-import { daysInRange, listSites, windowFor } from '@consolevault/gsc';
+import {
+  capacityEstimate,
+  daysInRange,
+  DISPATCH_QPM_PER_ACCOUNT,
+  GSC_LIMITS,
+  listSites,
+  windowFor,
+} from '@consolevault/gsc';
 import {
   authClientForAccount,
   coverageState,
@@ -135,6 +142,27 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       checks.push({ name: 'Recent collection', ok: false, detail: errMsg(err) });
     }
 
+    try {
+      const all = await propertyRepo.list();
+      const byTable = new Map<string, string[]>();
+      for (const p of all) {
+        const list = byTable.get(p.sanitizedTableName) ?? [];
+        list.push(p.siteUrl);
+        byTable.set(p.sanitizedTableName, list);
+      }
+      const collisions = [...byTable.values()].filter((urls) => new Set(urls).size > 1);
+      checks.push({
+        name: 'Table-name collisions',
+        ok: collisions.length === 0,
+        detail:
+          collisions.length === 0
+            ? 'none'
+            : `${collisions.length} colliding table name(s): ${collisions.map((u) => u.join(' / ')).join('; ')}`,
+      });
+    } catch (err) {
+      checks.push({ name: 'Table-name collisions', ok: false, detail: errMsg(err) });
+    }
+
     return { ok: checks.every((c) => c.ok), checks };
   });
 
@@ -187,6 +215,12 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     return { task: id, status: 'pending' };
   });
 
+  // --- Requeue dead-lettered (error) tasks: reset to pending for the next run (SPEC §8) ---
+  app.post('/api/tasks/requeue-errors', async () => {
+    const requeued = await taskRepo.requeueErrors();
+    return { requeued };
+  });
+
   // --- Run the daily pipeline now ---
   app.post('/api/pipeline/run', async () => {
     const [execution] = await executionsClient.createExecution({ parent: workflowParent });
@@ -210,12 +244,17 @@ export function registerManagementRoutes(app: FastifyInstance): void {
   app.get('/api/groups', async () => groupRepo.list());
 
   app.post('/api/groups', async (req, reply) => {
-    const body = (req.body ?? {}) as { name?: string; memberPropertyIds?: string[] };
+    const body = (req.body ?? {}) as {
+      name?: string;
+      memberPropertyIds?: string[];
+      materialized?: boolean;
+    };
     if (!body.name) throw new HttpError(400, 'name is required');
     const saved = await saveGroup({
       id: randomUUID(),
       name: body.name,
       memberPropertyIds: body.memberPropertyIds ?? [],
+      ...(body.materialized ? { materialized: true } : {}),
     });
     reply.code(201);
     return saved;
@@ -224,17 +263,24 @@ export function registerManagementRoutes(app: FastifyInstance): void {
   app.patch<{ Params: IdParams }>('/api/groups/:id', async (req) => {
     const existing = await groupRepo.get(req.params.id);
     if (!existing) throw new HttpError(404, 'Group not found');
-    const body = (req.body ?? {}) as { name?: string; memberPropertyIds?: string[] };
+    const body = (req.body ?? {}) as {
+      name?: string;
+      memberPropertyIds?: string[];
+      materialized?: boolean;
+    };
     return saveGroup({
       ...existing,
       ...(body.name ? { name: body.name } : {}),
       ...(body.memberPropertyIds ? { memberPropertyIds: body.memberPropertyIds } : {}),
+      ...(body.materialized !== undefined ? { materialized: body.materialized } : {}),
     });
   });
 
   app.delete<{ Params: IdParams }>('/api/groups/:id', async (req, reply) => {
     const existing = await groupRepo.get(req.params.id);
     if (existing?.viewId) await warehouse.dropViewIfExists(existing.viewId);
+    if (existing)
+      await warehouse.dropTableIfExists(`group_${existing.id.replace(/[^a-zA-Z0-9]/g, '_')}_mat`);
     await groupRepo.delete(req.params.id);
     reply.code(204);
   });
@@ -245,14 +291,56 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     return { created };
   });
 
-  // --- Costs (storage estimate; SPEC §11) ---
+  // --- API quota & capacity (SPEC §13 / Stage 6) ---
+  app.get('/api/quota', async () => {
+    const [usage, accounts, properties] = await Promise.all([
+      warehouse.apiUsage(),
+      accountRepo.list(),
+      propertyRepo.list(),
+    ]);
+    const included = properties.filter((p) => p.included);
+    const nameById = new Map(accounts.map((a) => [a.id, a.displayName]));
+    const propsByAccount = new Map<string, number>();
+    for (const p of included) {
+      const acct = p.preferredAccountId ?? p.accountIds[0];
+      if (acct) propsByAccount.set(acct, (propsByAccount.get(acct) ?? 0) + 1);
+    }
+    const byAccount = usage.byAccount
+      .map((u) => ({
+        accountId: u.accountId,
+        displayName: u.accountId ? (nameById.get(u.accountId) ?? u.accountId) : 'unattributed',
+        properties: u.accountId ? (propsByAccount.get(u.accountId) ?? 0) : 0,
+        callsToday: u.callsToday,
+        calls7d: u.calls7d,
+        tasksToday: u.tasksToday,
+      }))
+      .sort((a, b) => b.callsToday - a.callsToday);
+
+    const cap = capacityEstimate(usage.todayTotal, included.length);
+
+    return {
+      limits: GSC_LIMITS,
+      dispatchQpmPerAccount: DISPATCH_QPM_PER_ACCOUNT,
+      // We dispatch ≤600 QPM per account vs the 1,200 QPM per-user cap → 50% headroom by design.
+      perUserHeadroomPct: Math.round(
+        ((GSC_LIMITS.perUserQpm - DISPATCH_QPM_PER_ACCOUNT) / GSC_LIMITS.perUserQpm) * 100,
+      ),
+      today: { total: usage.todayTotal, byAccount },
+      last7d: { total: usage.last7dTotal, avgPerDay: Math.round(usage.last7dTotal / 7) },
+      capacity: { activeProperties: included.length, ...cap },
+    };
+  });
+
+  // --- Costs (storage estimate + real billing spend when configured; SPEC §11) ---
   app.get('/api/costs', async () => {
     const datasets = await warehouse.storageSummary();
     const totalBytes = datasets.reduce((sum, d) => sum + d.bytes, 0);
     const gib = totalBytes / 1024 ** 3;
     // Estimate only: BigQuery active logical storage ≈ $0.02/GiB/month (US multi-region).
     const estMonthlyStorageUsd = Number((gib * 0.02).toFixed(2));
-    return { datasets, totalBytes, estMonthlyStorageUsd };
+    const billingDataset = process.env.BILLING_EXPORT_DATASET;
+    const spend = billingDataset ? await warehouse.billingSpend(billingDataset) : null;
+    return { datasets, totalBytes, estMonthlyStorageUsd, spend };
   });
 
   // --- Settings ---
@@ -292,10 +380,20 @@ async function saveGroup(group: PropertyGroup): Promise<PropertyGroup> {
       existing.push(m.sanitizedTableName);
     }
   }
+  const unionSql = buildUnionViewSql(config.projectId, existing);
   if (existing.length > 0) {
-    await warehouse.createOrReplaceView(viewId, buildUnionViewSql(config.projectId, existing));
+    await warehouse.createOrReplaceView(viewId, unionSql);
   } else {
     await warehouse.dropViewIfExists(viewId);
+  }
+
+  // Materialized table (opt-in): a CREATE OR REPLACE TABLE snapshot for faster BI, kept fresh by the
+  // daily workflow. Drop it when unmaterialized or no members exist.
+  const matId = `${viewId}_mat`;
+  if (group.materialized && existing.length > 0) {
+    await warehouse.createOrReplaceTable(matId, unionSql);
+  } else {
+    await warehouse.dropTableIfExists(matId);
   }
 
   const { viewId: _previous, ...rest } = group;

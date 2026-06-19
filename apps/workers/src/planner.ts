@@ -7,7 +7,7 @@
  * identical logic, so steady-state can't drift from backfill.
  */
 
-import { daysInRange, windowFor } from '@consolevault/gsc';
+import { daysInRange, isValidCombo, windowFor } from '@consolevault/gsc';
 import { PropertyRepository, TaskRepository, taskId } from '@consolevault/store';
 import type { Task } from '@consolevault/types';
 
@@ -51,6 +51,8 @@ export async function reconcile(): Promise<{ properties: number; created: number
 
     for (const aggregation of config.aggregations) {
       for (const searchType of config.types) {
+        // Skip API-unsupported cells (e.g. discover/googleNews × byProperty) — don't create doomed tasks.
+        if (!isValidCombo(searchType, aggregation)) continue;
         const terminal = terminalByCell.get(`${searchType}|${aggregation}`) ?? new Set<string>();
         const missing = computeMissingDays(allDays, terminal);
         for (const day of missing) {

@@ -7,6 +7,7 @@ const LEGEND: [string, string][] = [
   ['pending', 'pending'],
   ['queued', 'queued'],
   ['error', 'error'],
+  ['skipped', 'n/a (unsupported)'],
   ['not_planned', 'not planned'],
 ];
 

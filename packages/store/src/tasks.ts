@@ -59,6 +59,17 @@ export class TaskRepository {
     return snap.docs.map((d) => d.data() as Task);
   }
 
+  /** Reset all terminal `error` tasks back to `pending` so the next run re-collects them. */
+  async requeueErrors(): Promise<number> {
+    const errors = await this.listByStatus('error');
+    await Promise.all(
+      errors.map((t) =>
+        this.col().doc(t.id).set({ status: 'pending', attempts: 0 }, { merge: true }),
+      ),
+    );
+    return errors.length;
+  }
+
   /** Mark a task queued (set queuedAt). */
   async markQueued(id: string): Promise<void> {
     await this.col()

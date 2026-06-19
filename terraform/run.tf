@@ -49,6 +49,10 @@ resource "google_cloud_run_v2_service" "api" {
         value = join(",", var.admin_emails)
       }
       env {
+        name  = "BILLING_EXPORT_DATASET"
+        value = var.enable_billing_export ? var.billing_export_dataset : ""
+      }
+      env {
         name = "SESSION_SECRET"
         value_source {
           secret_key_ref {
@@ -119,6 +123,10 @@ resource "google_cloud_run_v2_service" "orchestrator" {
         name  = "COLLECTOR_URL"
         value = google_cloud_run_v2_service.collector.uri
       }
+      env {
+        name  = "TASK_MAX_ATTEMPTS"
+        value = tostring(var.task_max_attempts)
+      }
     }
   }
 
@@ -168,6 +176,10 @@ resource "google_cloud_run_v2_service" "collector" {
       env {
         name  = "STAGING_BUCKET"
         value = google_storage_bucket.staging.name
+      }
+      env {
+        name  = "TASK_MAX_ATTEMPTS"
+        value = tostring(var.task_max_attempts)
       }
     }
   }

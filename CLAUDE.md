@@ -93,20 +93,25 @@ You MAY run `gcloud` and `terraform` yourself. BUT:
 
 ## Per-type / per-aggregation gotchas (encode in the query builder)
 
-- `discover` and `googleNews` do NOT support `byProperty` aggregation.
-- `discover` has NO `query` dimension. Build queries accordingly; never send invalid ones.
+- `discover` and `googleNews` do NOT support `byProperty` (nor `totals`, which is a byProperty
+  rollup) → those cells are `skipped` (terminal). They support `byPage` only.
+- `discover`/`googleNews` are **page + country only** — NO `query`, NO `device` (the API rejects
+  "grouped by device"). The per-type dimension matrix in `packages/gsc` encodes this; `isValidCombo`
+  gates the planner/collector. Never send invalid dimensions.
 - Default collection = `web` only; image/video/news/discover/googleNews are opt-in
   per property.
 - Aggregations: `byProperty` (query-level), `byPage` (page-level — drops more data),
   `totals` (for the anonymized-query delta). They do NOT reconcile by design.
-- Collect with `dataState=all` and use the response's `first_incomplete_date` (PT) to label each
-  day `final` vs `fresh`. The API omits no-traffic days (returns nothing): that means
-  `collected_no_data` (terminal) ONLY when the day is **final**; a **fresh** no-data day is
-  `collected_fresh` (non-terminal → re-collected until it finalizes). There is no fixed look-back
-  window. See `docs/DATA-FRESHNESS.md`.
+- The API omits days with no data (returns nothing, not zero rows). Mark such days
+  `collected_no_data` (terminal), distinct from `pending`. Confirm via the cheap
+  date-grouped presence check.
 - Row exposure ceiling: 50K rows/day/type. Paginate 25K per page, stop at 50K.
 - Rate limit binding constraint = per-user 1,200 QPM, shared across an account's
   properties → one Cloud Tasks queue per account, dispatch well under the limit.
+- API efficiency (`docs/API-EFFICIENCY.md`): always use partial-response `fields` + the
+  `(gzip)` UA; the finality probe is `fields=metadata`+`rowLimit=1` and cached per
+  (property,type) for 60 min (`probe-cache`). Do NOT batch — batched calls count as N
+  queries (no quota benefit). Every collect records `api_calls` in `task_logs` (Quota page).
 
 ---
 

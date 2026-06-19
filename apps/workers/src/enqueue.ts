@@ -6,15 +6,24 @@
 
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { loadConfig } from '@consolevault/config';
+import { DISPATCH_PER_SECOND_PER_ACCOUNT } from '@consolevault/gsc';
 import { TaskRepository } from '@consolevault/store';
 import type { Task } from '@consolevault/types';
+import { TASK_MAX_ATTEMPTS } from './constants.js';
 
 const config = loadConfig();
 const tasksClient = new CloudTasksClient();
 
 /** Dispatch rate per account queue (SPEC §5.3: well under the 1,200 QPM / 20 QPS user cap). */
-const MAX_DISPATCHES_PER_SECOND = 10;
+const MAX_DISPATCHES_PER_SECOND = DISPATCH_PER_SECOND_PER_ACCOUNT;
 const MAX_CONCURRENT_DISPATCHES = 10;
+
+const RETRY_CONFIG = {
+  maxAttempts: TASK_MAX_ATTEMPTS,
+  minBackoff: { seconds: 10 },
+  maxBackoff: { seconds: 3600 },
+  maxDoublings: 6,
+};
 
 function queueId(accountId: string): string {
   return `cv-acct-${accountId}`.slice(0, 100);
@@ -27,23 +36,26 @@ function isAlreadyExists(err: unknown): boolean {
 async function ensureQueue(accountId: string): Promise<string> {
   const parent = tasksClient.locationPath(config.projectId, config.region);
   const queuePath = tasksClient.queuePath(config.projectId, config.region, queueId(accountId));
+  const desired = {
+    name: queuePath,
+    rateLimits: {
+      maxDispatchesPerSecond: MAX_DISPATCHES_PER_SECOND,
+      maxConcurrentDispatches: MAX_CONCURRENT_DISPATCHES,
+    },
+    retryConfig: RETRY_CONFIG,
+  };
   try {
-    await tasksClient.getQueue({ name: queuePath });
+    const [queue] = await tasksClient.getQueue({ name: queuePath });
+    // Reconcile the retry policy onto queues created before this config (or a changed maxAttempts).
+    if (queue.retryConfig?.maxAttempts !== TASK_MAX_ATTEMPTS) {
+      await tasksClient
+        .updateQueue({ queue: desired, updateMask: { paths: ['retry_config'] } })
+        .catch(() => {});
+    }
   } catch {
-    await tasksClient
-      .createQueue({
-        parent,
-        queue: {
-          name: queuePath,
-          rateLimits: {
-            maxDispatchesPerSecond: MAX_DISPATCHES_PER_SECOND,
-            maxConcurrentDispatches: MAX_CONCURRENT_DISPATCHES,
-          },
-        },
-      })
-      .catch((err: unknown) => {
-        if (!isAlreadyExists(err)) throw err; // raced with another enqueue — fine
-      });
+    await tasksClient.createQueue({ parent, queue: desired }).catch((err: unknown) => {
+      if (!isAlreadyExists(err)) throw err; // raced with another enqueue — fine
+    });
   }
   return queuePath;
 }

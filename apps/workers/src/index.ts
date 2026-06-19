@@ -13,6 +13,7 @@ import { collectTask, type CollectInput } from './collector.js';
 import { reconcile } from './planner.js';
 import { enqueueAll } from './enqueue.js';
 import { tokenHealthSweep } from './health.js';
+import { refreshMaterialized } from './materialize.js';
 
 const app = Fastify({ logger: true });
 const config = loadConfig();
@@ -26,13 +27,18 @@ app.post('/collect', async (req, reply) => {
   if (!body.propertyId || !body.dataDate) {
     return reply.code(400).send({ error: 'propertyId and dataDate are required' });
   }
+  // Cloud Tasks sets this header to the 0-based retry count for this dispatch (SPEC §8 dead-letter).
+  const retryCount = Number(req.headers['x-cloudtasks-taskretrycount'] ?? 0) || 0;
   try {
-    const result = await collectTask({
-      propertyId: body.propertyId,
-      dataDate: body.dataDate,
-      ...(body.searchType ? { searchType: body.searchType } : {}),
-      ...(body.aggregation ? { aggregation: body.aggregation } : {}),
-    });
+    const result = await collectTask(
+      {
+        propertyId: body.propertyId,
+        dataDate: body.dataDate,
+        ...(body.searchType ? { searchType: body.searchType } : {}),
+        ...(body.aggregation ? { aggregation: body.aggregation } : {}),
+      },
+      retryCount,
+    );
     // Structured marker for the "no successful collection in 24h" absence alert.
     app.log.info({ event: 'collected', status: result.status, rows: result.rows }, 'collected');
     return result;
@@ -49,6 +55,7 @@ app.post('/discover-all', async () => discoverAllAccounts(secretStore));
 app.post('/reconcile', async () => reconcile());
 app.post('/enqueue', async () => enqueueAll());
 app.post('/token-health-sweep', async () => tokenHealthSweep(secretStore, app.log));
+app.post('/refresh-materialized', async () => refreshMaterialized());
 
 const port = Number(process.env.PORT ?? 8080);
 

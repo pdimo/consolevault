@@ -3,6 +3,7 @@ import {
   buildQuery,
   dimensionsFor,
   isDayFinal,
+  isValidCombo,
   mapRowsToGscRows,
   type SearchAnalyticsQueryParams,
 } from './client.js';
@@ -27,8 +28,8 @@ describe('dimensionsFor', () => {
     expect(dimensionsFor('totals', 'web')).toEqual([]);
   });
 
-  it('discover drops the query dimension and rejects byProperty', () => {
-    expect(dimensionsFor('byPage', 'discover')).toEqual(['page', 'country', 'device']);
+  it('discover is page/country only (no query, no device) and rejects byProperty', () => {
+    expect(dimensionsFor('byPage', 'discover')).toEqual(['page', 'country']);
     expect(() => dimensionsFor('byProperty', 'discover')).toThrow(/byProperty/);
   });
 
@@ -89,5 +90,39 @@ describe('mapRowsToGscRows', () => {
       is_anonymized: false,
       data_state: 'final',
     });
+  });
+});
+
+describe('dimensionsFor per type', () => {
+  it('gives web/image/etc the full dimension set', () => {
+    expect(dimensionsFor('byProperty', 'web')).toEqual(['query', 'country', 'device']);
+    expect(dimensionsFor('byPage', 'image')).toEqual(['query', 'page', 'country', 'device']);
+  });
+
+  it('restricts discover & googleNews to page/country (no query, no device)', () => {
+    expect(dimensionsFor('byPage', 'discover')).toEqual(['page', 'country']);
+    expect(dimensionsFor('byPage', 'googleNews')).toEqual(['page', 'country']);
+  });
+
+  it('throws on unsupported byProperty for discover/googleNews', () => {
+    expect(() => dimensionsFor('byProperty', 'discover')).toThrow();
+  });
+});
+
+describe('isValidCombo', () => {
+  it('allows all aggregations for web/image/video/news', () => {
+    for (const t of ['web', 'image', 'video', 'news'] as const) {
+      expect(isValidCombo(t, 'byProperty')).toBe(true);
+      expect(isValidCombo(t, 'byPage')).toBe(true);
+      expect(isValidCombo(t, 'totals')).toBe(true);
+    }
+  });
+
+  it('allows only byPage for discover and googleNews', () => {
+    for (const t of ['discover', 'googleNews'] as const) {
+      expect(isValidCombo(t, 'byPage')).toBe(true);
+      expect(isValidCombo(t, 'byProperty')).toBe(false);
+      expect(isValidCombo(t, 'totals')).toBe(false);
+    }
   });
 });

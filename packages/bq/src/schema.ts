@@ -69,6 +69,9 @@ export const TASK_LOGS_SCHEMA: readonly BqField[] = [
   { name: 'status', type: 'STRING', mode: 'REQUIRED' },
   { name: 'attempt', type: 'INTEGER', mode: 'REQUIRED' },
   { name: 'row_count', type: 'INTEGER', mode: 'NULLABLE' },
+  // GSC API calls this attempt made (probe + pages [+ search-appearance step-2]) — powers the
+  // Quota/capacity dashboard (Stage 6). NULLABLE so pre-existing rows stay valid.
+  { name: 'api_calls', type: 'INTEGER', mode: 'NULLABLE' },
   { name: 'error_message', type: 'STRING', mode: 'NULLABLE' },
   { name: 'logged_at', type: 'TIMESTAMP', mode: 'REQUIRED' },
 ] as const;

@@ -34,6 +34,7 @@ export type TaskStatus =
   | 'collected_fresh'
   | 'collected_with_data'
   | 'collected_no_data'
+  | 'skipped' // (type × aggregation) not supported by the API — terminal, never collected
   | 'error';
 
 /** How an account authenticates (SPEC §3). */
@@ -119,6 +120,8 @@ export interface PropertyGroup {
   doubleCountWarning?: boolean;
   /** Name of the generated BigQuery union view in gsc_views. */
   viewId?: string;
+  /** Opt-in: also maintain a materialized TABLE (group_<id>_mat) refreshed daily, for faster BI. */
+  materialized?: boolean;
 }
 
 /** Global defaults applied to newly-discovered properties (SPEC §10 settings). */

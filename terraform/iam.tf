@@ -65,6 +65,8 @@ locals {
       "roles/workflows.invoker",
       "roles/run.invoker",
       "roles/logging.logWriter",
+      # Build materialized group tables (CREATE OR REPLACE TABLE in gsc_views from gsc_byProperty).
+      "roles/bigquery.jobUser",
     ]
   }
 
@@ -119,6 +121,21 @@ resource "google_bigquery_dataset_iam_member" "api_views_editor" {
   dataset_id = google_bigquery_dataset.datasets["gsc_views"].dataset_id
   role       = "roles/bigquery.dataEditor"
   member     = "serviceAccount:${google_service_account.api.email}"
+}
+
+# Orchestrator builds materialized group tables: read byProperty, write gsc_views (Stage 6).
+resource "google_bigquery_dataset_iam_member" "workflows_byproperty_viewer" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.datasets["gsc_byProperty"].dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.workflows.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "workflows_views_editor" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.datasets["gsc_views"].dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.workflows.email}"
 }
 
 # ---------------------------------------------------------------------------

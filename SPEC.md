@@ -297,6 +297,7 @@ The planner each run: `expected_days(window, PT) − cells already terminal` = t
 - **Stage 3 — Workflows + Cloud Tasks + reconciliation + schedule.** Daily Workflow (discover→reconcile/plan→enqueue); per-account queues + backoff; log writer; Scheduler; add `byPage` + `totals`/anomaly-delta; rolling window + look-back; coverage states. → *"Backfilled 16 months across all properties/accounts, self-updates daily, rate-limited per account, provably complete."*
 - **Stage 4 — Management UI.** Accounts/auth, properties/include-exclude/config (web default + opt-in types), property groups, **coverage heatmap + verify-setup**, jobs/logs/re-collect. → *"A PM manages everything and sees exactly how complete each client's data is."*
 - **Stage 5 — Costs + docs + redistributability.** ✅ Cost panel (BigQuery storage estimate, no billing-export dependency) + Cloud Billing **budget** (50/90/100%); cross-property **wildcard views** (`gsc_views.*_all`, self-maintaining); **operational alerting** (token-health sweep + Monitoring alerts for unhealthy tokens / collector errors / no-collection-24h, with the alert email a **runtime Setting** so each install configures its own); `setup.sh` one-command deploy + **Cloud Shell** magic-link; README/DEPLOY/LOOKER docs. The dry-run query valve was **deferred** (no in-UI query runner; the budget + alerts cover the real risk). → *"Deploy into your own GCP in ~15 min, see costs, no surprise bills."*
+- **Stage 6 — Coverage, efficiency & capacity.** ✅ API efficiency (gzip + partial-response `fields` + 60-min probe cache; no batching) + **Quota/capacity dashboard** (measured `api_calls` vs Google limits, "how many more sites"); **all search types live** with a per-type dimension matrix (discover/googleNews = page+country only) + invalid-combo `skipped`; **dead-letter** retry policy (`task_max_attempts`, retry-count-aware terminal error, Requeue-all-errors) + **table-name collision** disambiguation + Doctor check; **materialized group views** (opt-in) + **real billing spend** (opt-in export). Schema evolution self-heals. Search Appearance two-step **deferred to backlog**. → *"More coverage, provably efficient, and you can see your headroom."*
 
 ---
 
@@ -304,10 +305,14 @@ The planner each run: `expected_days(window, PT) − cells already terminal` = t
 
 - [x] ~~Look-back window~~ — **removed.** Replaced by data-state-driven re-collection
   (`first_incomplete_date`); fresh days re-collect until final. See `docs/DATA-FRESHNESS.md`.
-- [ ] Dead-letter retry count before manual-only.
+- [x] Dead-letter retry count — Cloud Tasks `retryConfig` (maxAttempts via `task_max_attempts` tfvar,
+  default 8, exp back-off); the collector marks terminal `error` only when retries are exhausted, and
+  Jobs has a **Requeue all errors** action. (Stage 6 P4)
 - [x] BQ dataset **location** — a permanent `bq_location` tfvar chosen once at deploy; documented in
   README/DEPLOY and prompted by `setup.sh`.
-- [ ] Table-name sanitization rules (trailing slash, IDN/unicode domains, collision strategy).
+- [x] Table-name collision strategy — distinct siteUrls that sanitize identically (path/IDN variants)
+  are disambiguated at discovery with a stable per-URL hash suffix (`disambiguatedTableName`); a Doctor
+  check surfaces any collisions. (Stage 6 P4)
 - [x] Least-privilege IAM split — done: `sa-api` (UI/control), `sa-collector` (BQ writer + creds),
   `sa-workflows` (orchestration). SPEC §13 / §3.
 

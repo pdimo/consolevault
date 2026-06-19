@@ -28,3 +28,6 @@ budget_amount   = 50  # in the billing account's own currency
 daily_schedule        = "0 9 * * *"
 schedule_timezone     = "America/Los_Angeles"
 token_health_schedule = "0 */6 * * *"
+
+# Cloud Tasks retries before a collection task is dead-lettered (terminal error).
+task_max_attempts = 8

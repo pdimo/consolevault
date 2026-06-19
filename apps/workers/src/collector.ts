@@ -16,6 +16,7 @@ import {
   fetchFirstIncompleteDate,
   isDayFinal,
   isIsoDate,
+  isValidCombo,
   mapRowsToGscRows,
   MAX_ROWS_PER_DAY,
   querySearchAnalytics,
@@ -37,11 +38,13 @@ import {
 import {
   AccountRepository,
   authClientForAccount,
+  ProbeCache,
   PropertyRepository,
   SecretStore,
   taskId,
   TaskRepository,
 } from '@consolevault/store';
+import { TASK_MAX_ATTEMPTS } from './constants.js';
 import type { Aggregation, GscRow, SearchType, Task, TaskStatus } from '@consolevault/types';
 
 const config = loadConfig();
@@ -58,6 +61,7 @@ const accountRepo = new AccountRepository();
 const propertyRepo = new PropertyRepository();
 const taskRepo = new TaskRepository();
 const secretStore = new SecretStore(config.projectId);
+const probeCache = new ProbeCache();
 
 /** Only probe first_incomplete_date for days within this window of today; older days are final. */
 const PROBE_LOOKBACK_DAYS = 14;
@@ -91,8 +95,7 @@ async function appendLog(
   accountId: string,
   status: TaskStatus,
   attempt: number,
-  rowCount?: number,
-  errorMessage?: string,
+  extra: { rowCount?: number; apiCalls?: number; errorMessage?: string } = {},
 ): Promise<void> {
   const row: TaskLogRow = {
     task_id: id,
@@ -104,13 +107,14 @@ async function appendLog(
     status,
     attempt,
     logged_at: new Date().toISOString(),
-    ...(rowCount !== undefined ? { row_count: rowCount } : {}),
-    ...(errorMessage ? { error_message: errorMessage } : {}),
+    ...(extra.rowCount !== undefined ? { row_count: extra.rowCount } : {}),
+    ...(extra.apiCalls !== undefined ? { api_calls: extra.apiCalls } : {}),
+    ...(extra.errorMessage ? { error_message: extra.errorMessage } : {}),
   };
   await warehouse.appendTaskLog(TASK_LOGS_SCHEMA, row);
 }
 
-export async function collectTask(input: CollectInput): Promise<CollectResult> {
+export async function collectTask(input: CollectInput, retryCount = 0): Promise<CollectResult> {
   const searchType: SearchType = input.searchType ?? 'web';
   const aggregation: Aggregation = input.aggregation ?? 'byProperty';
   if (!isIsoDate(input.dataDate))
@@ -118,6 +122,15 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
 
   const property = await propertyRepo.get(input.propertyId);
   if (!property) throw new Error(`Property not found: ${input.propertyId}`);
+
+  // Defensive: a stale task for an API-unsupported cell (e.g. discover×byProperty) is terminal-skipped,
+  // not errored — the planner already filters these, but old queued tasks shouldn't spam errors.
+  if (!isValidCombo(searchType, aggregation)) {
+    const id = taskId(input.propertyId, searchType, aggregation, input.dataDate);
+    await taskRepo.setTerminal(id, 'skipped').catch(() => {});
+    return { taskId: id, status: 'skipped', rows: 0 };
+  }
+
   const accountId = property.preferredAccountId ?? property.accountIds[0];
   if (!accountId) throw new Error(`Property has no associated account: ${input.propertyId}`);
   const account = await accountRepo.get(accountId);
@@ -132,22 +145,29 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
     aggregation,
     dataDate: input.dataDate,
     status: 'queued',
-    attempts: 1,
+    attempts: retryCount + 1,
     accountId,
     queuedAt: startedAt,
   };
   await taskRepo.create(task);
 
+  let apiCalls = 0; // GSC API calls this attempt (probe + pages) → task_logs.api_calls (Quota page)
   try {
     const auth = await authClientForAccount(account, secretStore);
 
-    // Finality: `first_incomplete_date` is property-wide and only returned by range queries, so we
-    // probe it once (not per page) — and only for RECENT days; older days are definitively final.
+    // Finality: `first_incomplete_date` is property/type-wide and only returned by range queries, so
+    // we probe it once per (property,type) — only for RECENT days (older days are definitively final)
+    // — and reuse it across the run via a short-TTL cache, counting an API call only on a cache miss.
     const todayPt = todayPacific();
     const isRecent = input.dataDate >= addDays(todayPt, -PROBE_LOOKBACK_DAYS);
-    const firstIncompleteDate = isRecent
-      ? await fetchFirstIncompleteDate(auth, property.siteUrl, searchType, todayPt)
-      : null;
+    let firstIncompleteDate: string | null = null;
+    if (isRecent) {
+      const probe = await probeCache.getOrFetch(property.siteUrl, searchType, () =>
+        fetchFirstIncompleteDate(auth, property.siteUrl, searchType, todayPt),
+      );
+      firstIncompleteDate = probe.firstIncompleteDate;
+      if (probe.probed) apiCalls++;
+    }
     const isFinal = isDayFinal(input.dataDate, firstIncompleteDate);
 
     // Paginate 25K/page until empty or the 50K/day/type ceiling.
@@ -163,6 +183,7 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
         rowLimit: ROWS_PER_PAGE,
       };
       const page = await querySearchAnalytics(auth, params);
+      apiCalls++;
       rawRows.push(...page);
       if (page.length === 0 || startRow + ROWS_PER_PAGE >= MAX_ROWS_PER_DAY) break;
     }
@@ -179,7 +200,10 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
         accountId,
         status,
         1,
-        0,
+        {
+          rowCount: 0,
+          apiCalls,
+        },
       );
       return { taskId: id, status, rows: 0 };
     }
@@ -256,13 +280,21 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
       accountId,
       status,
       1,
-      rowsLoaded,
+      {
+        rowCount: rowsLoaded,
+        apiCalls,
+      },
     );
     await accountRepo.update(accountId, { lastSuccessAt: new Date().toISOString() });
     return { taskId: id, status, rows: rowsLoaded };
   } catch (err) {
     const classified = classifyRetryable(err);
-    await taskRepo.setTerminal(id, 'error');
+    const attempt = retryCount + 1;
+    // Dead-letter: only mark terminal `error` once retries are exhausted (or the error isn't
+    // retryable). While Cloud Tasks still has attempts left, leave the task `queued` so a retry runs
+    // it — it no longer flips to `error` on the first transient failure.
+    const lastAttempt = !classified.retryable || attempt >= TASK_MAX_ATTEMPTS;
+    if (lastAttempt) await taskRepo.setTerminal(id, 'error');
     await appendLog(
       id,
       property.siteUrl,
@@ -270,10 +302,9 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
       aggregation,
       input.dataDate,
       accountId,
-      'error',
-      1,
-      undefined,
-      classified.message,
+      lastAttempt ? 'error' : 'queued',
+      attempt,
+      { apiCalls, errorMessage: classified.message },
     );
     throw classified;
   }

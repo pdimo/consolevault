@@ -114,6 +114,10 @@ export default function Property() {
                 </label>
               ))}
             </div>
+            <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Discover and Google News support <code>byPage</code> only — <code>byProperty</code>/
+              <code>totals</code> cells for those types are skipped automatically.
+            </p>
           </div>
         </div>
         <div className="row" style={{ marginTop: 10 }}>

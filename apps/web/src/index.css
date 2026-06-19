@@ -194,6 +194,9 @@ th {
 .cell.not_planned {
   background: #eceff1;
 }
+.cell.skipped {
+  background: #d7cce0;
+}
 .legend {
   display: flex;
   gap: 14px;

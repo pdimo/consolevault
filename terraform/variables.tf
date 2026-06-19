@@ -63,6 +63,24 @@ variable "token_health_schedule" {
   default     = "0 */6 * * *"
 }
 
+variable "task_max_attempts" {
+  type        = number
+  description = "Cloud Tasks retry attempts before a collection task is dead-lettered (terminal error)."
+  default     = 8
+}
+
+variable "enable_billing_export" {
+  type        = bool
+  description = "Create a BigQuery dataset for Cloud Billing export so the Costs panel shows real spend. The export itself is a one-time manual Console step — see docs/BILLING-EXPORT.md."
+  default     = false
+}
+
+variable "billing_export_dataset" {
+  type        = string
+  description = "Dataset id that Cloud Billing export writes to (read by the Costs panel)."
+  default     = "billing_export"
+}
+
 variable "default_partition_expiry_days" {
   type        = number
   description = "Default BigQuery table/partition expiry in days. null = never expire."

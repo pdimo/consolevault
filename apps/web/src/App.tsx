@@ -8,6 +8,7 @@ import Groups from './Groups';
 import Jobs from './Jobs';
 import Doctor from './Doctor';
 import Costs from './Costs';
+import Quota from './Quota';
 import Settings from './Settings';
 
 const NAV = [
@@ -17,6 +18,7 @@ const NAV = [
   ['/jobs', 'Jobs'],
   ['/doctor', 'Doctor'],
   ['/costs', 'Costs'],
+  ['/quota', 'Quota'],
   ['/settings', 'Settings'],
 ] as const;
 
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/doctor" element={<Doctor />} />
           <Route path="/costs" element={<Costs />} />
+          <Route path="/quota" element={<Quota />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
