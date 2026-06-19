@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultBackfillMonths: 16,
   defaultTypes: ['web'],
   defaultAggregations: ['byProperty'],
+  alertEmail: '',
 };
 
 export class SettingsRepository {

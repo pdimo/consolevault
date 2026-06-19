@@ -56,6 +56,30 @@ export default function Settings() {
           {msg && <span className="muted">{msg}</span>}
         </div>
       </div>
+
+      <h3 style={{ marginTop: 24 }}>Alerting</h3>
+      <p className="muted">
+        Email for operational alerts: an account&apos;s token going unhealthy, collector errors, or
+        no successful collection in 24h. Leave empty to turn alerting off. Saving (re)configures the
+        Cloud Monitoring email channel.
+      </p>
+      <div className="card">
+        <label className="field">
+          alert email
+          <input
+            type="email"
+            placeholder="you@example.com"
+            value={settings.alertEmail ?? ''}
+            onChange={(e) => setSettings({ ...settings, alertEmail: e.target.value })}
+          />
+        </label>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button className="primary" onClick={() => void save()}>
+            Save
+          </button>
+          {msg && <span className="muted">{msg}</span>}
+        </div>
+      </div>
     </section>
   );
 }

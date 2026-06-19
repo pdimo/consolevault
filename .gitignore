@@ -16,7 +16,10 @@ coverage/
 *.tfstate.*
 *.tfplan
 crash.log
-terraform.tfvars          # real values — commit ONLY terraform.tfvars.example
+# real values — commit ONLY terraform.tfvars.example (gitignore has NO inline comments)
+terraform.tfvars
+# tool-managed image refs (images.auto.tfvars) — per-install
+*.auto.tfvars
 
 # Google credentials — NEVER commit
 *service-account*.json

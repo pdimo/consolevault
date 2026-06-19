@@ -33,6 +33,36 @@ variable "admin_emails" {
   default     = []
 }
 
+variable "billing_account" {
+  type        = string
+  description = "Cloud Billing account id (e.g. 000000-AAAAAA-BBBBBB) for the budget. Empty disables the budget."
+  default     = ""
+}
+
+variable "budget_amount" {
+  type        = number
+  description = "Monthly billing budget amount in the billing account's own currency — alerts at 50/90/100%."
+  default     = 50
+}
+
+variable "daily_schedule" {
+  type        = string
+  description = "Cron for the daily collection workflow."
+  default     = "0 9 * * *"
+}
+
+variable "schedule_timezone" {
+  type        = string
+  description = "Time zone for the schedulers (collection date logic itself is always Pacific Time)."
+  default     = "America/Los_Angeles"
+}
+
+variable "token_health_schedule" {
+  type        = string
+  description = "Cron for the token-health sweep (more frequent than the daily run)."
+  default     = "0 */6 * * *"
+}
+
 variable "default_partition_expiry_days" {
   type        = number
   description = "Default BigQuery table/partition expiry in days. null = never expire."

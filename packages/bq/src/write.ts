@@ -10,6 +10,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 import type { TableMetadata } from '@google-cloud/bigquery';
 import { Storage } from '@google-cloud/storage';
 import { DATASETS, GSC_ROW_SCHEMA, type BqField } from './schema.js';
+import { buildWildcardViewSql, WILDCARD_VIEWS } from './views.js';
 
 export interface WarehouseConfig {
   projectId: string;
@@ -55,16 +56,47 @@ export class Warehouse {
     return `\`${this.cfg.projectId}.${datasetId}.${tableId}\``;
   }
 
-  /** Create a table (idempotently) — DATE-partitioned + clustered when requested. */
+  /**
+   * Per-dataset storage rollup (table count, rows, logical bytes) from each dataset's __TABLES__
+   * meta-table. Cheap metadata scan — drives the Costs panel's storage estimate (SPEC §11), works
+   * with no billing export configured.
+   */
+  async storageSummary(): Promise<
+    Array<{ dataset: string; tables: number; rows: number; bytes: number }>
+  > {
+    const datasets = [DATASETS.byProperty, DATASETS.byPage, DATASETS.totals, DATASETS.taskLogs];
+    const out: Array<{ dataset: string; tables: number; rows: number; bytes: number }> = [];
+    for (const ds of datasets) {
+      const [result] = await this.bq.query({
+        // `rows` is a reserved keyword in BigQuery — use non-reserved output aliases.
+        query: `SELECT COUNT(*) AS n_tables, IFNULL(SUM(row_count), 0) AS n_rows, IFNULL(SUM(size_bytes), 0) AS n_bytes FROM ${this.tableRef(ds, '__TABLES__')}`,
+        location: this.cfg.location,
+      });
+      const r = (result[0] ?? {}) as { n_tables?: number; n_rows?: number; n_bytes?: number };
+      out.push({
+        dataset: ds,
+        tables: Number(r.n_tables ?? 0),
+        rows: Number(r.n_rows ?? 0),
+        bytes: Number(r.n_bytes ?? 0),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Create a table (idempotently) — DATE-partitioned + clustered when requested. Returns true if it
+   * actually created the table (false if it already existed), so callers can do one-time setup
+   * (e.g. wildcard-view creation) only on a property's first-ever table.
+   */
   async ensureTable(
     datasetId: string,
     tableId: string,
     fields: readonly BqField[],
     opts: EnsureTableOptions = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     const table = this.bq.dataset(datasetId).table(tableId);
     const [exists] = await table.exists();
-    if (exists) return;
+    if (exists) return false;
     const metadata: TableMetadata = { schema: toBigQuerySchema(fields) };
     if (opts.partitionField) {
       metadata.timePartitioning = { type: 'DAY', field: opts.partitionField };
@@ -74,11 +106,35 @@ export class Warehouse {
     }
     try {
       await this.bq.dataset(datasetId).createTable(tableId, metadata);
+      return true;
     } catch (err) {
       // Concurrent collectors for the same property race check-then-create; the loser sees
       // ALREADY_EXISTS (409). The table now exists either way, so treat it as success.
       if ((err as { code?: number }).code !== 409) throw err;
+      return false;
     }
+  }
+
+  /**
+   * Ensure the wildcard view for a data dataset exists (SPEC §6.1). Wildcard views (`dataset.*`)
+   * are DYNAMIC — once created they auto-include every future property table — so this is a cheap
+   * create-if-missing, called only when a property's first table is created.
+   */
+  async ensureWildcardView(dataset: string, viewId: string): Promise<void> {
+    if (await this.tableExists(DATASETS.views, viewId)) return;
+    await this.createOrReplaceView(viewId, buildWildcardViewSql(this.cfg.projectId, dataset));
+  }
+
+  /** (Re)create all wildcard views over datasets that have ≥1 table. Used for initial/manual refresh. */
+  async refreshWildcardViews(): Promise<string[]> {
+    const created: string[] = [];
+    for (const { dataset, viewId } of WILDCARD_VIEWS) {
+      const [tables] = await this.bq.dataset(dataset).getTables();
+      if (!tables.some((t) => t.id && !t.id.startsWith('_'))) continue;
+      await this.createOrReplaceView(viewId, buildWildcardViewSql(this.cfg.projectId, dataset));
+      created.push(viewId);
+    }
+    return created;
   }
 
   /** Write rows as NDJSON to the staging bucket; returns the object path. */

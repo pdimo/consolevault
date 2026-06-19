@@ -128,6 +128,8 @@ export interface Settings {
   /** Default search types for new properties (web on by default). */
   defaultTypes: SearchType[];
   defaultAggregations: Aggregation[];
+  /** Email for operational alerts (token health, errors, no-collection). Empty = alerting off. */
+  alertEmail?: string;
 }
 
 /**

@@ -296,17 +296,20 @@ The planner each run: `expected_days(window, PT) − cells already terminal` = t
 - **Stage 2 — Collector + idempotent load.** One (property, byProperty, web, day): paginate to 50K, hash rows, NDJSON→GCS, **delete-then-load** partition; `collected_no_data` handling; manual trigger. → *"Real rows in BigQuery for one property/day; re-running replaces, never duplicates."*
 - **Stage 3 — Workflows + Cloud Tasks + reconciliation + schedule.** Daily Workflow (discover→reconcile/plan→enqueue); per-account queues + backoff; log writer; Scheduler; add `byPage` + `totals`/anomaly-delta; rolling window + look-back; coverage states. → *"Backfilled 16 months across all properties/accounts, self-updates daily, rate-limited per account, provably complete."*
 - **Stage 4 — Management UI.** Accounts/auth, properties/include-exclude/config (web default + opt-in types), property groups, **coverage heatmap + verify-setup**, jobs/logs/re-collect. → *"A PM manages everything and sees exactly how complete each client's data is."*
-- **Stage 5 — Costs + docs + redistributability.** Billing-export cost panel + dry-run safety valve + budgets; wildcard views; Cloud Shell magic-link + `setup.sh` (billing/quota detection); README (internal-use OAuth exception); Looker templates. → *"Deploy into your own GCP in ~15 min, see costs, no surprise bills."*
+- **Stage 5 — Costs + docs + redistributability.** ✅ Cost panel (BigQuery storage estimate, no billing-export dependency) + Cloud Billing **budget** (50/90/100%); cross-property **wildcard views** (`gsc_views.*_all`, self-maintaining); **operational alerting** (token-health sweep + Monitoring alerts for unhealthy tokens / collector errors / no-collection-24h, with the alert email a **runtime Setting** so each install configures its own); `setup.sh` one-command deploy + **Cloud Shell** magic-link; README/DEPLOY/LOOKER docs. The dry-run query valve was **deferred** (no in-UI query runner; the budget + alerts cover the real risk). → *"Deploy into your own GCP in ~15 min, see costs, no surprise bills."*
 
 ---
 
 ## 14. Remaining open questions
 
-- [ ] Look-back window default (30 days?) and whether per-property configurable.
+- [x] ~~Look-back window~~ — **removed.** Replaced by data-state-driven re-collection
+  (`first_incomplete_date`); fresh days re-collect until final. See `docs/DATA-FRESHNESS.md`.
 - [ ] Dead-letter retry count before manual-only.
-- [ ] BQ dataset **location** chosen once at deploy (EU/US/region) for data residency — confirm UX.
+- [x] BQ dataset **location** — a permanent `bq_location` tfvar chosen once at deploy; documented in
+  README/DEPLOY and prompted by `setup.sh`.
 - [ ] Table-name sanitization rules (trailing slash, IDN/unicode domains, collision strategy).
-- [ ] Least-privilege IAM split: token-reader SA vs BQ-writer SA vs UI SA.
+- [x] Least-privilege IAM split — done: `sa-api` (UI/control), `sa-collector` (BQ writer + creds),
+  `sa-workflows` (orchestration). SPEC §13 / §3.
 
 ---
 ## Related

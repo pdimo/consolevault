@@ -112,4 +112,12 @@ export const api = {
   getSettings: () => http<Settings>('/api/settings'),
   putSettings: (s: Settings) =>
     http<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
+
+  // costs
+  getCosts: () =>
+    http<{
+      datasets: { dataset: string; tables: number; rows: number; bytes: number }[];
+      totalBytes: number;
+      estMonthlyStorageUsd: number;
+    }>('/api/costs'),
 };

@@ -16,3 +16,15 @@ default_partition_expiry_days = null
 
 # Stage 4: Google account email(s) allowed to sign in to the management UI.
 admin_emails = ["you@example.com"]
+
+# Stage 5 — operational alerting: the alert EMAIL is a runtime setting in the app's Settings UI
+# (not a deploy var), since each operator of this distributable app sets their own.
+
+# Stage 5 — Cloud Billing budget (leave billing_account empty to disable).
+billing_account = "" # e.g. "000000-AAAAAA-BBBBBB"
+budget_amount   = 50  # in the billing account's own currency
+
+# Schedules (collection DATE logic is always Pacific Time regardless of these).
+daily_schedule        = "0 9 * * *"
+schedule_timezone     = "America/Los_Angeles"
+token_health_schedule = "0 */6 * * *"

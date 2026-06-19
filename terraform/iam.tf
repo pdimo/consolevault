@@ -42,6 +42,9 @@ locals {
       "roles/cloudtasks.viewer",
       "roles/logging.logWriter",
       "roles/monitoring.metricWriter",
+      # Manage the alert email channel + attach it to the alert policies (runtime, on Settings save).
+      "roles/monitoring.notificationChannelEditor",
+      "roles/monitoring.alertPolicyEditor",
     ]
     # Collector runtime: read creds, run BQ load jobs, control-plane RW, telemetry.
     # (Dataset dataEditor + staging objectAdmin are bound below at resource scope.)

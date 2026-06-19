@@ -27,6 +27,7 @@ import {
   warehouse,
 } from './deps.js';
 import { HttpError } from './errors.js';
+import { ensureAlerting } from './alerting.js';
 
 const tasksClient = new CloudTasksClient();
 const executionsClient = new ExecutionsClient();
@@ -238,11 +239,34 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     reply.code(204);
   });
 
+  // --- Wildcard views (SPEC §6.1): (re)create cross-property views over existing data ---
+  app.post('/api/views/refresh', async () => {
+    const created = await warehouse.refreshWildcardViews();
+    return { created };
+  });
+
+  // --- Costs (storage estimate; SPEC §11) ---
+  app.get('/api/costs', async () => {
+    const datasets = await warehouse.storageSummary();
+    const totalBytes = datasets.reduce((sum, d) => sum + d.bytes, 0);
+    const gib = totalBytes / 1024 ** 3;
+    // Estimate only: BigQuery active logical storage ≈ $0.02/GiB/month (US multi-region).
+    const estMonthlyStorageUsd = Number((gib * 0.02).toFixed(2));
+    return { datasets, totalBytes, estMonthlyStorageUsd };
+  });
+
   // --- Settings ---
   app.get('/api/settings', async () => settingsRepo.get());
   app.put('/api/settings', async (req) => {
     const settings = req.body as Settings;
     await settingsRepo.put(settings);
+    // Sync the Monitoring email channel + attach to alert policies (best-effort; never block save).
+    try {
+      const result = await ensureAlerting(config.projectId, settings.alertEmail ?? '');
+      app.log.info({ alerting: result }, 'ensureAlerting');
+    } catch (err) {
+      app.log.error({ err: errMsg(err) }, 'ensureAlerting failed');
+    }
     return settings;
   });
 }

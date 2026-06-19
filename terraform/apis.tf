@@ -2,6 +2,7 @@
 # container to Cloud Run (artifactregistry + cloudbuild — see README/plan flagged deviation).
 locals {
   enabled_apis = [
+    "cloudresourcemanager.googleapis.com",
     "searchconsole.googleapis.com",
     "bigquery.googleapis.com",
     "firestore.googleapis.com",

@@ -31,6 +31,7 @@ import {
   rowHash,
   TASK_LOGS_SCHEMA,
   Warehouse,
+  WILDCARD_VIEWS,
   type TaskLogRow,
 } from '@consolevault/bq';
 import {
@@ -221,10 +222,21 @@ export async function collectTask(input: CollectInput): Promise<CollectResult> {
     const dataset = datasetFor(aggregation);
     const objectPath = `collect/${id}.ndjson`;
     await warehouse.uploadNdjson(objectPath, rows);
-    await warehouse.ensureTable(dataset, property.sanitizedTableName, GSC_ROW_SCHEMA, {
-      partitionField: PARTITION_FIELD,
-      clustering: ['query'],
-    });
+    const tableCreated = await warehouse.ensureTable(
+      dataset,
+      property.sanitizedTableName,
+      GSC_ROW_SCHEMA,
+      {
+        partitionField: PARTITION_FIELD,
+        clustering: ['query'],
+      },
+    );
+    // First table in this dataset → ensure its cross-property wildcard view exists (SPEC §6.1).
+    // Wildcard views are dynamic, so this one-time create then self-includes all future properties.
+    if (tableCreated) {
+      const wildcard = WILDCARD_VIEWS.find((w) => w.dataset === dataset);
+      if (wildcard) await warehouse.ensureWildcardView(dataset, wildcard.viewId);
+    }
     const { rowsLoaded } = await warehouse.deleteThenLoadSlice(
       dataset,
       property.sanitizedTableName,
