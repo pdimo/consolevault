@@ -8,9 +8,12 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Scatter as RScatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from 'recharts';
 
 /** Theme-aware palette (resolves to light/dark via CSS vars). */
@@ -46,7 +49,8 @@ export function TrendArea({
 }: {
   data: Record<string, unknown>[];
   xKey: string;
-  series: { key: string; name: string; color: string }[];
+  /** `dashed` renders a fill-free dashed line — used for the comparison-period overlay. */
+  series: { key: string; name: string; color: string; dashed?: boolean }[];
   height?: number;
 }) {
   return (
@@ -70,8 +74,11 @@ export function TrendArea({
             dataKey={s.key}
             name={s.name}
             stroke={s.color}
-            fill={`url(#g-${s.key})`}
+            fill={s.dashed ? 'none' : `url(#g-${s.key})`}
             strokeWidth={2}
+            strokeDasharray={s.dashed ? '4 3' : undefined}
+            dot={false}
+            connectNulls
           />
         ))}
       </AreaChart>
@@ -79,38 +86,139 @@ export function TrendArea({
   );
 }
 
-/** Donut for categorical breakdowns (coverage mix, storage by dataset). */
+/**
+ * Donut for categorical breakdowns. Keeps the chart legible by showing only the top `topN` slices
+ * and rolling the long tail into a single "Other" slice (UI-only — the source data is untouched).
+ * Uses a custom, responsive, truncating legend with percentages (Recharts' built-in legend overflows
+ * with many categories, especially on mobile).
+ */
 export function Donut({
   data,
   height = 220,
+  topN = 6,
 }: {
   data: { name: string; value: number; color?: string }[];
+  height?: number;
+  topN?: number;
+}) {
+  const sorted = [...data].filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const head = sorted.slice(0, topN);
+  const restValue = sorted.slice(topN).reduce((s, d) => s + d.value, 0);
+  const slices =
+    restValue > 0 ? [...head, { name: 'Other', value: restValue, color: 'var(--muted)' }] : head;
+  const total = slices.reduce((s, d) => s + d.value, 0) || 1;
+  const colorOf = (d: { color?: string }, i: number) =>
+    d.color ?? CHART_COLORS[i % CHART_COLORS.length];
+
+  return (
+    <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-4">
+      <div className="w-full sm:w-1/2">
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            <Pie
+              data={slices}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="58%"
+              outerRadius="82%"
+              paddingAngle={2}
+            >
+              {slices.map((d, i) => (
+                <Cell key={d.name} fill={colorOf(d, i)} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={TOOLTIP} formatter={(v: number) => compact(v)} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <ul className="w-full space-y-1 text-sm sm:w-1/2">
+        {slices.map((d, i) => (
+          <li key={d.name} className="flex items-center gap-2">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: colorOf(d, i) }}
+            />
+            <span className="min-w-0 flex-1 truncate" title={d.name}>
+              {d.name || '(unknown)'}
+            </span>
+            <span className="shrink-0 tabular-nums text-muted">
+              {((d.value / total) * 100).toFixed(0)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Stacked area (e.g. impressions by ranking tier over time). */
+export function StackedArea({
+  data,
+  xKey,
+  series,
+  height = 260,
+}: {
+  data: Record<string, unknown>[];
+  xKey: string;
+  series: { key: string; name: string; color: string }[];
   height?: number;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          innerRadius="55%"
-          outerRadius="80%"
-          paddingAngle={2}
-        >
-          {data.map((d, i) => (
-            <Cell key={d.name} fill={d.color ?? CHART_COLORS[i % CHART_COLORS.length]} />
-          ))}
-        </Pie>
+      <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -12 }}>
+        <XAxis dataKey={xKey} {...axisProps} tickFormatter={(v: string) => v.slice(5)} />
+        <YAxis {...axisProps} width={42} tickFormatter={compact} />
         <Tooltip contentStyle={TOOLTIP} />
-        <Legend
-          verticalAlign="middle"
-          align="right"
-          layout="vertical"
-          iconType="circle"
-          wrapperStyle={{ fontSize: 12, color: 'var(--muted)' }}
+        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--muted)' }} />
+        {series.map((s) => (
+          <Area
+            key={s.key}
+            type="monotone"
+            stackId="1"
+            dataKey={s.key}
+            name={s.name}
+            stroke={s.color}
+            fill={s.color}
+            fillOpacity={0.55}
+          />
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Bubble scatter (e.g. CTR vs position; bubble size = impressions). */
+export function Bubble({
+  data,
+  xLabel,
+  yLabel,
+  height = 300,
+  xReversed = false,
+  yPercent = false,
+}: {
+  data: { x: number; y: number; z: number; name: string }[];
+  xLabel: string;
+  yLabel: string;
+  height?: number;
+  xReversed?: boolean;
+  yPercent?: boolean;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+        <XAxis type="number" dataKey="x" name={xLabel} reversed={xReversed} {...axisProps} />
+        <YAxis
+          type="number"
+          dataKey="y"
+          name={yLabel}
+          {...axisProps}
+          width={46}
+          tickFormatter={(v: number) => (yPercent ? `${v}%` : compact(v))}
         />
-      </PieChart>
+        <ZAxis type="number" dataKey="z" range={[20, 420]} />
+        <Tooltip contentStyle={TOOLTIP} cursor={{ strokeDasharray: '3 3' }} />
+        <RScatter data={data} fill="var(--accent)" fillOpacity={0.45} />
+      </ScatterChart>
     </ResponsiveContainer>
   );
 }

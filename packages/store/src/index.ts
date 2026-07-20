@@ -14,3 +14,7 @@ export * from './coverage.js';
 export * from './groups.js';
 export * from './settings.js';
 export * from './probe-cache.js';
+export * from './dashboard-cache.js';
+export * from './dashboard-service.js';
+export * from './saved-filters.js';
+export * from './semantic-groups.js';

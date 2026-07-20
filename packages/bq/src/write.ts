@@ -44,6 +44,63 @@ function toBigQuerySchema(fields: readonly BqField[]): { fields: BqField[] } {
   return { fields: fields.map((f) => ({ ...f })) };
 }
 
+/** BigQuery error `reason`s that clear on their own — safe to retry after a backoff. */
+const RETRIABLE_BQ_REASONS = new Set([
+  'rateLimitExceeded',
+  'quotaExceeded',
+  'jobRateLimitExceeded',
+  'backendError',
+  'internalError',
+]);
+
+/**
+ * True for the transient rate/quota/backend errors a heavy backfill provokes — notably the DML
+ * "exceeded quota for total number of dml jobs writing to a table, pending + running" and
+ * "table dml insert operations" limits, which are per-table concurrency ceilings that drain as
+ * in-flight DML clears (confirmed live on the 2026-06-19/20 backfill). Genuine daily-hard quotas
+ * also match here but are bounded by `maxAttempts`, so we simply fail slightly later, never loop.
+ */
+export function isRetriableBqError(err: unknown): boolean {
+  const e = err as { code?: number; message?: string; errors?: Array<{ reason?: string }> };
+  if (e?.errors?.some((x) => x.reason != null && RETRIABLE_BQ_REASONS.has(x.reason))) return true;
+  if (e?.code === 500 || e?.code === 503) return true;
+  // Some rate/quota errors carry the signal only in the message text, not a structured reason.
+  const msg = (e?.message ?? '').toLowerCase();
+  return msg.includes('exceeded quota') || msg.includes('exceeded rate limits');
+}
+
+export interface BqRetryOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  /** Injectable for tests so they don't actually wait. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable for tests to make backoff deterministic. */
+  random?: () => number;
+}
+
+/**
+ * Run `op`, retrying retriable BigQuery errors with exponential backoff + full jitter. Full jitter
+ * (delay ∈ [0, cap]) de-synchronizes the fan-out of concurrent collectors racing the same table,
+ * which is exactly what causes the "pending + running" DML ceiling in the first place.
+ */
+export async function withBqRetry<T>(op: () => Promise<T>, opts: BqRetryOptions = {}): Promise<T> {
+  const maxAttempts = opts.maxAttempts ?? 6;
+  const baseDelayMs = opts.baseDelayMs ?? 1000;
+  const maxDelayMs = opts.maxDelayMs ?? 16000;
+  const sleep = opts.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+  const random = opts.random ?? Math.random;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await op();
+    } catch (err) {
+      if (attempt >= maxAttempts || !isRetriableBqError(err)) throw err;
+      const cap = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
+      await sleep(Math.floor(random() * cap));
+    }
+  }
+}
+
 export class Warehouse {
   private readonly bq: BigQuery;
   private readonly storage: Storage;
@@ -126,6 +183,24 @@ export class Warehouse {
   }
 
   /**
+   * Run a parameterized analytics query for the Dashboards feature with a hard `maximumBytesBilled`
+   * cap (cost safety valve) — a runaway query errors instead of billing. Read-only.
+   */
+  async runAnalytics(
+    query: string,
+    params: Record<string, unknown>,
+    maxGiB = 2,
+  ): Promise<Array<Record<string, unknown>>> {
+    const [rows] = await this.bq.query({
+      query,
+      params,
+      location: this.cfg.location,
+      maximumBytesBilled: String(Math.round(maxGiB * 1024 ** 3)),
+    });
+    return rows as Array<Record<string, unknown>>;
+  }
+
+  /**
    * Daily collection activity for the last `days` (Overview chart, Stage 7): tasks + rows per
    * Pacific-Time day from task_logs. Returns [] if the log table doesn't exist yet.
    */
@@ -180,6 +255,32 @@ export class Warehouse {
       };
     } catch {
       return null; // export not configured / table absent
+    }
+  }
+
+  /**
+   * Detect the Cloud Billing export setup state for the Costs page's guided opt-in. The dataset is
+   * always provisioned, so a failing wildcard query means the user hasn't pointed the Console export
+   * at it yet (no `gcp_billing_export_v1_*` table). `dataFlowing` is true once Google has written rows.
+   */
+  async billingExportStatus(datasetId: string): Promise<{
+    exportConfigured: boolean;
+    dataFlowing: boolean;
+    lastDataDate: string | null;
+  }> {
+    try {
+      const [rows] = await this.bq.query({
+        query: `SELECT COUNT(*) AS n,
+          FORMAT_DATE('%Y-%m-%d', MAX(DATE(usage_start_time))) AS last
+          FROM \`${this.cfg.projectId}.${datasetId}.gcp_billing_export_v1_*\`
+          WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 45 DAY)`,
+        location: this.cfg.location,
+      });
+      const r = (rows as Array<{ n?: number; last?: string | null }>)[0];
+      const n = Number(r?.n ?? 0);
+      return { exportConfigured: true, dataFlowing: n > 0, lastDataDate: r?.last ?? null };
+    } catch {
+      return { exportConfigured: false, dataFlowing: false, lastDataDate: null };
     }
   }
 
@@ -291,21 +392,29 @@ export class Warehouse {
     searchType: string,
     objectPath: string,
   ): Promise<{ rowsLoaded: number }> {
-    await this.bq.query({
-      query: `DELETE FROM ${this.tableRef(datasetId, tableId)} WHERE data_date = @d AND search_type = @t`,
-      params: { d: dataDate, t: searchType },
-      location: this.cfg.location,
-    });
+    // Retry the DML + load: a heavy backfill fans out many concurrent slices at one property table
+    // and trips BigQuery's per-table DML concurrency/rate ceilings. Those are transient — a
+    // jittered backoff lets in-flight DML drain and the slice succeeds. Re-running is idempotent
+    // (DELETE-then-append), so a mid-way retry can never double-write.
+    await withBqRetry(() =>
+      this.bq.query({
+        query: `DELETE FROM ${this.tableRef(datasetId, tableId)} WHERE data_date = @d AND search_type = @t`,
+        params: { d: dataDate, t: searchType },
+        location: this.cfg.location,
+      }),
+    );
 
     const file = this.storage.bucket(this.cfg.stagingBucket).file(objectPath);
-    const [job] = await this.bq
-      .dataset(datasetId)
-      .table(tableId)
-      .load(file, {
-        sourceFormat: 'NEWLINE_DELIMITED_JSON',
-        schema: toBigQuerySchema(GSC_ROW_SCHEMA),
-        writeDisposition: 'WRITE_APPEND',
-      });
+    const [job] = await withBqRetry(() =>
+      this.bq
+        .dataset(datasetId)
+        .table(tableId)
+        .load(file, {
+          sourceFormat: 'NEWLINE_DELIMITED_JSON',
+          schema: toBigQuerySchema(GSC_ROW_SCHEMA),
+          writeDisposition: 'WRITE_APPEND',
+        }),
+    );
     const outputRows = job.statistics?.load?.outputRows;
     return { rowsLoaded: outputRows ? Number(outputRows) : 0 };
   }

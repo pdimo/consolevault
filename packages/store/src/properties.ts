@@ -132,6 +132,15 @@ export class PropertyRepository {
     await this.col().doc(id).set({ preferredAccountId: accountId }, { merge: true });
   }
 
+  async setDashboardEnabled(id: string, enabled: boolean): Promise<void> {
+    await this.col().doc(id).set({ dashboardEnabled: enabled }, { merge: true });
+  }
+
+  /** Brand terms for query classification (brand vs non-brand segment). */
+  async setBrandTerms(id: string, brandTerms: string[]): Promise<void> {
+    await this.col().doc(id).set({ brandTerms }, { merge: true });
+  }
+
   /** Merge denormalized collection status onto a property doc (Stage 7 — fast list rendering). */
   async setStatus(id: string, status: Partial<PropertyStatus>): Promise<void> {
     const patch: Record<string, unknown> = {};

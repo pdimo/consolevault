@@ -36,9 +36,18 @@ main:
           auth:
             type: OIDC
         result: materialized_result
+    - refresh_dashboards:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/refresh-dashboards
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: dashboards_result
     - done:
         return:
           discover: ${discover_result.body}
           reconcile: ${reconcile_result.body}
           enqueue: ${enqueue_result.body}
           materialized: ${materialized_result.body}
+          dashboards: ${dashboards_result.body}

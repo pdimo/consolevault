@@ -111,6 +111,14 @@ export interface Property {
   lastSeenAt?: string;
   /** Denormalized collection status (stamped by the collector) for fast list rendering (Stage 7). */
   status?: PropertyStatus;
+  /** Opt-in: surface an analytics dashboard for this property (Dashboards section). */
+  dashboardEnabled?: boolean;
+  /**
+   * Brand terms for query classification (brand vs non-brand). A query is "brand" if it contains
+   * any term (case-insensitive substring). Applied at QUERY time — never baked into collected rows —
+   * so edits take effect instantly with no reprocessing. First instance of a general "segment".
+   */
+  brandTerms?: string[];
 }
 
 /** Lightweight, denormalized per-property collection status for the Properties list (Stage 7). */
@@ -137,6 +145,87 @@ export interface PropertyGroup {
   viewId?: string;
   /** Opt-in: also maintain a materialized TABLE (group_<id>_mat) refreshed daily, for faster BI. */
   materialized?: boolean;
+  /** Opt-in: surface an analytics dashboard for this group (Dashboards section). */
+  dashboardEnabled?: boolean;
+  /** Brand terms for query classification across the group (see Property.brandTerms). */
+  brandTerms?: string[];
+}
+
+/** Analytics dashboard target + filters (Dashboards feature). */
+export type DashboardTargetType = 'property' | 'group';
+
+export interface DashboardListItem {
+  type: DashboardTargetType;
+  id: string;
+  name: string;
+  /** Brand terms defined for this target (drives the brand/non-brand segment + split). */
+  brandTerms?: string[];
+}
+
+/** Shared filter/segmentation state for a dashboard (encoded in the URL). */
+export interface DashboardFilters {
+  searchType?: string; // default 'web'
+  start: string; // YYYY-MM-DD (Pacific)
+  end: string; // YYYY-MM-DD
+  device?: string[];
+  country?: string[];
+  query?: string; // comma-separated "contains" terms
+  page?: string; // comma-separated "contains" terms
+  positionMin?: number;
+  positionMax?: number;
+  brandExclude?: string[]; // terms to exclude from query
+  finalOnly?: boolean;
+  /** Brand segment toggle. Applied with `brandTerms` (query-time classification). */
+  segment?: 'brand' | 'nonbrand';
+  /** Brand terms used to classify `segment` (and the brand split). */
+  brandTerms?: string[];
+  /**
+   * Comparison-period mode for period-over-period deltas (KPIs, movers, trend overlay).
+   * Defaults to 'previous' (the immediately-preceding same-length window) to preserve prior behaviour.
+   */
+  compareMode?: 'none' | 'previous' | 'yoy' | 'prev_month' | 'custom';
+  /** Explicit comparison window (only when compareMode==='custom'). YYYY-MM-DD. */
+  compareStart?: string;
+  compareEnd?: string;
+  /** YoY only: align to the same weekday by shifting 364 days instead of a calendar year. */
+  matchWeekdays?: boolean;
+  /** Named preset filters, OR-free (each AND-applied). 'paa' = question queries, 'longtail' = ≥4 words. */
+  presets?: ('paa' | 'longtail')[];
+}
+
+/** One rule matching GSC rows on a dimension — `page` for content groups, `query` for topic clusters. */
+export interface MatchRule {
+  dimension: 'page' | 'query';
+  op: 'contains' | 'starts_with' | 'equals' | 'regex';
+  value: string;
+}
+
+/**
+ * A per-property semantic grouping (Firestore `semantic_groups`). `content` groups pages by URL
+ * rules; `topic` clusters group queries by keyword/regex rules. Rules within a group are OR'd — a
+ * row belongs to the group if any rule matches. Deterministic and fully inspectable; an optional
+ * AI-suggest step (Phase 2b) only proposes rules the user can edit.
+ */
+export interface SemanticGroup {
+  id: string;
+  propertyId: string;
+  kind: 'content' | 'topic';
+  name: string;
+  /** Flags a priority group (★) for emphasis in the reports. */
+  priority?: boolean;
+  rules: MatchRule[];
+  updatedAt?: string;
+}
+
+/** A user-saved filter preset for a dashboard target (Firestore `saved_filters`). */
+export interface SavedFilter {
+  id: string;
+  /** Owning target: `${type}:${id}` (e.g. `property:abc`) or `*` for all targets. */
+  scope: string;
+  name: string;
+  /** The filter state to apply, as URL query params (same shape the dashboard encodes). */
+  params: Record<string, string>;
+  createdAt: string;
 }
 
 /** Global defaults applied to newly-discovered properties (SPEC §10 settings). */
@@ -148,6 +237,11 @@ export interface Settings {
   defaultAggregations: Aggregation[];
   /** Email for operational alerts (token health, errors, no-collection). Empty = alerting off. */
   alertEmail?: string;
+  /**
+   * Opt in to real Cloud Billing spend in the Costs panel. The dataset is always provisioned; turning
+   * this on reveals the guided one-time Console export step + live status. Off = estimates only.
+   */
+  billingExportEnabled?: boolean;
 }
 
 /**

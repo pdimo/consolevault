@@ -12,6 +12,9 @@ export const COLLECTIONS = {
   groups: 'groups',
   settings: 'settings',
   probeCache: 'probe_cache',
+  dashboardCache: 'dashboard_cache',
+  savedFilters: 'saved_filters',
+  semanticGroups: 'semantic_groups',
 } as const;
 
 let db: Firestore | undefined;

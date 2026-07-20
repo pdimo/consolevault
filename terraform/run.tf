@@ -50,7 +50,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "BILLING_EXPORT_DATASET"
-        value = var.enable_billing_export ? var.billing_export_dataset : ""
+        value = var.billing_export_dataset
+      }
+      env {
+        name  = "BILLING_ACCOUNT_ID"
+        value = var.billing_account
       }
       env {
         name = "SESSION_SECRET"

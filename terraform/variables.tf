@@ -69,15 +69,9 @@ variable "task_max_attempts" {
   default     = 8
 }
 
-variable "enable_billing_export" {
-  type        = bool
-  description = "Create a BigQuery dataset for Cloud Billing export so the Costs panel shows real spend. The export itself is a one-time manual Console step — see docs/BILLING-EXPORT.md."
-  default     = false
-}
-
 variable "billing_export_dataset" {
   type        = string
-  description = "Dataset id that Cloud Billing export writes to (read by the Costs panel)."
+  description = "Dataset id that Cloud Billing export writes to (always provisioned; read by the Costs panel). Real spend is opted into from the UI — see docs/BILLING-EXPORT.md."
   default     = "billing_export"
 }
 

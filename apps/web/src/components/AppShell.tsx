@@ -12,6 +12,13 @@ interface NavItem {
 const NAV: { group?: string; items: NavItem[] }[] = [
   { items: [{ to: '/overview', label: 'Overview', icon: '▤' }] },
   {
+    group: 'Analytics',
+    items: [
+      { to: '/dashboards', label: 'Dashboards', icon: '◫' },
+      { to: '/opportunities', label: 'Opportunities', icon: '◎' },
+    ],
+  },
+  {
     group: 'Data',
     items: [
       { to: '/properties', label: 'Properties', icon: '▦' },

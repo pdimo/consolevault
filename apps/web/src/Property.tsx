@@ -9,10 +9,21 @@ import type {
 import { api, type Coverage } from './api';
 import { Heatmap } from './Heatmap';
 import { useToast } from './components/feedback';
-import { Badge, Button, Card, Field, Spinner, TextInput, cx } from './components/ui';
+import { Badge, Button, Card, Field, Spinner, Switch, TextInput, cx } from './components/ui';
+import { SemanticGroupEditor } from './components/SemanticGroupEditor';
 
 const ALL_TYPES: SearchType[] = ['web', 'image', 'video', 'news', 'discover', 'googleNews'];
 const ALL_AGGS: Aggregation[] = ['byProperty', 'byPage', 'totals'];
+
+/** Best-guess brand term from a property URL, e.g. https://www.adtsecurity.com.au/ → "adtsecurity". */
+function suggestBrand(siteUrl: string): string {
+  const host = siteUrl
+    .replace(/^sc-domain:/, '')
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/^www\./, '');
+  return host.split('.')[0] ?? '';
+}
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: string }) {
   return (
@@ -36,6 +47,8 @@ export default function Property() {
   const [property, setProperty] = useState<Prop | null>(null);
   const [config, setConfig] = useState<CollectionConfig | null>(null);
   const [included, setIncluded] = useState(false);
+  const [dashboardEnabled, setDashboardEnabled] = useState(false);
+  const [brandTerms, setBrandTerms] = useState('');
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [anomaly, setAnomaly] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -48,6 +61,8 @@ export default function Property() {
       if (p) {
         setConfig(p.config);
         setIncluded(p.included);
+        setDashboardEnabled(p.dashboardEnabled ?? false);
+        setBrandTerms((p.brandTerms ?? []).join(', '));
       }
     });
     void api
@@ -71,10 +86,16 @@ export default function Property() {
   const toggleIn = <T,>(arr: T[], v: T): T[] =>
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
+  const parseTerms = (s: string) =>
+    s
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
   const save = async () => {
     setSaving(true);
     try {
-      await api.patchProperty(id, { included, config });
+      await api.patchProperty(id, { included, config, brandTerms: parseTerms(brandTerms) });
       toast('Saved', 'success');
       setCoverage(await api.coverage(id));
     } catch (e) {
@@ -96,6 +117,18 @@ export default function Property() {
     }
   };
 
+  const toggleDashboard = async () => {
+    const next = !dashboardEnabled;
+    setDashboardEnabled(next);
+    try {
+      await api.patchProperty(id, { dashboardEnabled: next });
+      toast(next ? 'Dashboard enabled' : 'Dashboard disabled', 'success');
+    } catch (e) {
+      setDashboardEnabled(!next);
+      toast(String(e), 'error');
+    }
+  };
+
   return (
     <div>
       <Link to="/properties" className="text-sm text-accent hover:underline">
@@ -113,6 +146,15 @@ export default function Property() {
         {anomaly != null && (
           <span className="text-sm text-muted">anomaly {(anomaly * 100).toFixed(1)}%</span>
         )}
+        <span className="flex-1" />
+        <label className="flex items-center gap-2 text-sm">
+          <Switch
+            checked={dashboardEnabled}
+            onChange={() => void toggleDashboard()}
+            label="Dashboard"
+          />
+          Dashboard
+        </label>
       </div>
 
       <Card
@@ -208,6 +250,36 @@ export default function Property() {
           )}
         </div>
 
+        <div className="mt-5">
+          <p className="mb-1 text-sm font-semibold">Brand terms</p>
+          <p className="mb-2 text-xs text-muted">
+            Comma-separated. A query is <strong>brand</strong> if it contains any term
+            (case-insensitive) — used by the dashboard&apos;s brand/non-brand segment and split.
+            Applied at query time, so edits take effect immediately with no reprocessing.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <TextInput
+              className="w-full max-w-md"
+              placeholder={`e.g. ${suggestBrand(property.siteUrl)}, ${suggestBrand(property.siteUrl)} login`}
+              value={brandTerms}
+              onChange={(e) => setBrandTerms(e.target.value)}
+            />
+            {suggestBrand(property.siteUrl) && (
+              <Button
+                onClick={() =>
+                  setBrandTerms((cur) => {
+                    const s = suggestBrand(property.siteUrl);
+                    const have = parseTerms(cur);
+                    return have.includes(s) ? cur : [...have, s].join(', ');
+                  })
+                }
+              >
+                Suggest “{suggestBrand(property.siteUrl)}”
+              </Button>
+            )}
+          </div>
+        </div>
+
         <p className="mt-4 text-xs text-muted">
           Collection runs daily at 09:00 Pacific. Track a property and save, then wait for the daily
           run or click <strong>Run pipeline now</strong> to backfill immediately. Recent days are
@@ -215,6 +287,23 @@ export default function Property() {
           them — no look-back setting needed.
         </p>
       </Card>
+
+      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Content groups">
+          <p className="mb-3 text-sm text-muted">
+            Group pages by URL rules (e.g. all <code>/blog/</code> pages) to analyse them together
+            in the reports.
+          </p>
+          <SemanticGroupEditor propertyId={id} kind="content" />
+        </Card>
+        <Card title="Topic clusters">
+          <p className="mb-3 text-sm text-muted">
+            Group queries by keyword rules (e.g. everything about “pricing”) to see topic-level
+            performance.
+          </p>
+          <SemanticGroupEditor propertyId={id} kind="topic" />
+        </Card>
+      </div>
 
       <Card title="Coverage" className="mt-5">
         {coverage ? (

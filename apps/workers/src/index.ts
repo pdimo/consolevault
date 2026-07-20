@@ -14,6 +14,7 @@ import { reconcile } from './planner.js';
 import { enqueueAll } from './enqueue.js';
 import { tokenHealthSweep } from './health.js';
 import { refreshMaterialized } from './materialize.js';
+import { refreshDashboards } from './dashboards.js';
 
 const app = Fastify({ logger: true });
 const config = loadConfig();
@@ -56,6 +57,7 @@ app.post('/reconcile', async () => reconcile());
 app.post('/enqueue', async () => enqueueAll());
 app.post('/token-health-sweep', async () => tokenHealthSweep(secretStore, app.log));
 app.post('/refresh-materialized', async () => refreshMaterialized());
+app.post('/refresh-dashboards', async () => refreshDashboards());
 
 const port = Number(process.env.PORT ?? 8080);
 

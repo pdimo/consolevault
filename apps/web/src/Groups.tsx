@@ -9,11 +9,53 @@ import {
   Card,
   EmptyState,
   PageHeader,
+  Switch,
   TextInput,
   Table,
   Td,
   Th,
 } from './components/ui';
+
+/** Inline brand-terms editor for a group row (comma-separated; saves on demand). */
+function BrandCell({ group, onSaved }: { group: PropertyGroup; onSaved: () => void }) {
+  const toast = useToast();
+  const initial = (group.brandTerms ?? []).join(', ');
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const dirty = val.trim() !== initial;
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.patchGroup(group.id, {
+        brandTerms: val
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+      });
+      toast('Brand terms saved', 'success');
+      onSaved();
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="flex items-center gap-1">
+      <TextInput
+        className="w-40"
+        placeholder="brand, brand login"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+      />
+      {dirty && (
+        <Button size="sm" loading={saving} onClick={() => void save()}>
+          Save
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export default function Groups() {
   const toast = useToast();
@@ -84,6 +126,8 @@ export default function Groups() {
               <Th>Members</Th>
               <Th>View</Th>
               <Th>Materialized</Th>
+              <Th>Dashboard</Th>
+              <Th>Brand terms</Th>
               <Th />
             </tr>
           </thead>
@@ -119,6 +163,26 @@ export default function Groups() {
                     />
                     {g.materialized ? <code className="text-xs">{g.viewId}_mat</code> : 'off'}
                   </label>
+                </Td>
+                <Td>
+                  <Switch
+                    checked={g.dashboardEnabled ?? false}
+                    onChange={() =>
+                      void api
+                        .patchGroup(g.id, { dashboardEnabled: !g.dashboardEnabled })
+                        .then(load)
+                        .then(() =>
+                          toast(
+                            g.dashboardEnabled ? 'Dashboard disabled' : 'Dashboard enabled',
+                            'success',
+                          ),
+                        )
+                    }
+                    label="Dashboard"
+                  />
+                </Td>
+                <Td>
+                  <BrandCell group={g} onSaved={load} />
                 </Td>
                 <Td>
                   <Button size="sm" variant="ghost" onClick={() => void remove(g)}>

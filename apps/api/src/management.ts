@@ -267,12 +267,18 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       name?: string;
       memberPropertyIds?: string[];
       materialized?: boolean;
+      dashboardEnabled?: boolean;
+      brandTerms?: string[];
     };
     return saveGroup({
       ...existing,
       ...(body.name ? { name: body.name } : {}),
       ...(body.memberPropertyIds ? { memberPropertyIds: body.memberPropertyIds } : {}),
       ...(body.materialized !== undefined ? { materialized: body.materialized } : {}),
+      ...(body.dashboardEnabled !== undefined ? { dashboardEnabled: body.dashboardEnabled } : {}),
+      ...(Array.isArray(body.brandTerms)
+        ? { brandTerms: body.brandTerms.map((t) => String(t).trim()).filter(Boolean) }
+        : {}),
     });
   });
 
@@ -367,7 +373,7 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     };
   });
 
-  // --- Costs (storage estimate + real billing spend when configured; SPEC §11) ---
+  // --- Costs (storage estimate + real billing spend when opted-in and flowing; SPEC §11) ---
   app.get('/api/costs', async () => {
     const datasets = await warehouse.storageSummary();
     const totalBytes = datasets.reduce((sum, d) => sum + d.bytes, 0);
@@ -375,8 +381,28 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     // Estimate only: BigQuery active logical storage ≈ $0.02/GiB/month (US multi-region).
     const estMonthlyStorageUsd = Number((gib * 0.02).toFixed(2));
     const billingDataset = process.env.BILLING_EXPORT_DATASET;
-    const spend = billingDataset ? await warehouse.billingSpend(billingDataset) : null;
+    const { billingExportEnabled } = await settingsRepo.get();
+    // Real spend is shown only when the user has opted in (UI) and the export is populated.
+    const spend =
+      billingExportEnabled && billingDataset ? await warehouse.billingSpend(billingDataset) : null;
     return { datasets, totalBytes, estMonthlyStorageUsd, spend };
+  });
+
+  // Guided opt-in status for the Costs page: whether the user opted in, whether the manual Console
+  // export step is done (table present), and whether Google has started writing data.
+  app.get('/api/costs/billing-status', async () => {
+    const dataset = process.env.BILLING_EXPORT_DATASET || '';
+    const { billingExportEnabled } = await settingsRepo.get();
+    const status = dataset
+      ? await warehouse.billingExportStatus(dataset)
+      : { exportConfigured: false, dataFlowing: false, lastDataDate: null };
+    return {
+      enabled: billingExportEnabled ?? false,
+      dataset,
+      projectId: config.projectId,
+      billingAccountId: process.env.BILLING_ACCOUNT_ID || '',
+      ...status,
+    };
   });
 
   // --- Settings ---

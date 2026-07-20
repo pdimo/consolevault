@@ -307,8 +307,18 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
     </th>
   );
 }
-export function Td({ children, className }: { children?: ReactNode; className?: string }) {
+export function Td({
+  children,
+  className,
+  title,
+}: {
+  children?: ReactNode;
+  className?: string;
+  title?: string;
+}) {
   return (
-    <td className={cx('border-b border-line px-3 py-2 align-middle', className)}>{children}</td>
+    <td title={title} className={cx('border-b border-line px-3 py-2 align-middle', className)}>
+      {children}
+    </td>
   );
 }

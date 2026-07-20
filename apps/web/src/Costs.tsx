@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
-import { Card, PageHeader, Spinner, StatCard, Table, Td, Th } from './components/ui';
+import { useToast } from './components/feedback';
+import { Badge, Button, Card, PageHeader, Spinner, StatCard, Table, Td, Th } from './components/ui';
 import { Donut } from './components/charts';
 
 type Costs = Awaited<ReturnType<typeof api.getCosts>>;
+type BillingStatus = Awaited<ReturnType<typeof api.getBillingStatus>>;
 
 function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -17,16 +19,157 @@ function fmtBytes(b: number): string {
   return `${v.toFixed(2)} ${units[i]}`;
 }
 
-export default function Costs() {
-  const [costs, setCosts] = useState<Costs | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+/** Guided opt-in for real Cloud Billing spend: toggle on → one Console step → auto-detected status. */
+function BillingSetup({
+  status,
+  busy,
+  onSetEnabled,
+  onRecheck,
+}: {
+  status: BillingStatus;
+  busy: boolean;
+  onSetEnabled: (enabled: boolean) => void;
+  onRecheck: () => void;
+}) {
+  const exportUrl = status.billingAccountId
+    ? `https://console.cloud.google.com/billing/${status.billingAccountId}/export/bigquery?project=${status.projectId}`
+    : `https://console.cloud.google.com/billing?project=${status.projectId}`;
 
-  useEffect(() => {
+  if (!status.enabled) {
+    return (
+      <Card title="Real spend" className="mt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-2xl text-sm text-muted">
+            The figures above are <em>estimates</em>. Switch on real Cloud Billing spend to see
+            exact charges per service — it takes one quick step in the Google Cloud Console.
+          </p>
+          <Button variant="primary" loading={busy} onClick={() => onSetEnabled(true)}>
+            Set up real spend
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title="Real spend setup"
+      className="mt-5"
+      actions={
+        <Button loading={busy} onClick={() => onSetEnabled(false)}>
+          Use estimates instead
+        </Button>
+      }
+    >
+      {!status.exportConfigured ? (
+        <div className="space-y-3 text-sm">
+          <p className="text-muted">
+            One-time step in Google Cloud (we can&apos;t do this for you — Cloud Billing export is
+            Console-only):
+          </p>
+          <ol className="ml-4 list-decimal space-y-1">
+            <li>
+              Open{' '}
+              <a
+                className="text-accent hover:underline"
+                href={exportUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Billing → Billing export → BigQuery export
+              </a>
+              .
+            </li>
+            <li>
+              Under <strong>Standard usage cost</strong>, click <strong>Edit settings</strong>.
+            </li>
+            <li>
+              Set <strong>Project</strong> = <code>{status.projectId}</code> and{' '}
+              <strong>Dataset</strong> = <code>{status.dataset}</code>, then <strong>Save</strong>.
+            </li>
+          </ol>
+          <p className="text-xs text-muted">
+            Google then writes the export table; first data usually lands within a few hours (up to
+            ~24h) and isn&apos;t backfilled.
+          </p>
+          <Button loading={busy} onClick={onRecheck}>
+            I&apos;ve configured it — check now
+          </Button>
+        </div>
+      ) : !status.dataFlowing ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <p className="text-muted">
+            <Badge tone="ok">configured ✓</Badge> Waiting for Google&apos;s first daily export —
+            usually within a few hours, up to ~24h. The panel switches to real spend automatically.
+          </p>
+          <Button loading={busy} onClick={onRecheck}>
+            Check again
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-muted">
+          <Badge tone="ok">live ✓</Badge> Showing real Cloud Billing spend
+          {status.lastDataDate ? ` (data through ${status.lastDataDate})` : ''}.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+export default function Costs() {
+  const toast = useToast();
+  const [costs, setCosts] = useState<Costs | null>(null);
+  const [status, setStatus] = useState<BillingStatus | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(() => {
     api
       .getCosts()
       .then(setCosts)
       .catch((e) => setErr(String(e)));
+    api
+      .getBillingStatus()
+      .then(setStatus)
+      .catch(() => undefined);
   }, []);
+
+  useEffect(() => reload(), [reload]);
+
+  const setEnabled = async (enabled: boolean) => {
+    setBusy(true);
+    try {
+      const settings = await api.getSettings();
+      await api.putSettings({ ...settings, billingExportEnabled: enabled });
+      toast(enabled ? 'Real spend enabled' : 'Using estimates', 'success');
+      reload();
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recheck = async () => {
+    setBusy(true);
+    try {
+      const s = await api.getBillingStatus();
+      setStatus(s);
+      reload();
+      toast(
+        s.dataFlowing
+          ? 'Real spend is live'
+          : s.exportConfigured
+            ? 'Configured — waiting for first data'
+            : 'Export not detected yet',
+        s.exportConfigured ? 'success' : 'info',
+      );
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (err) return <p className="text-sm text-muted">Could not load costs: {err}</p>;
   if (!costs) {
@@ -104,7 +247,16 @@ export default function Costs() {
         </Table>
       </Card>
 
-      {costs.spend ? (
+      {status && (
+        <BillingSetup
+          status={status}
+          busy={busy}
+          onSetEnabled={(v) => void setEnabled(v)}
+          onRecheck={() => void recheck()}
+        />
+      )}
+
+      {costs.spend && (
         <Card
           title="Actual spend — last 30 days (billing export)"
           className="mt-5"
@@ -133,17 +285,6 @@ export default function Costs() {
             </tbody>
           </Table>
         </Card>
-      ) : (
-        <p className="mt-4 text-sm text-muted">
-          Tip: enable Cloud Billing export to see <em>actual</em> spend here — see{' '}
-          <a
-            className="text-accent hover:underline"
-            href="https://github.com/pdimo/consolevault/blob/main/docs/BILLING-EXPORT.md"
-          >
-            docs/BILLING-EXPORT.md
-          </a>
-          .
-        </p>
       )}
     </div>
   );

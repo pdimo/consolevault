@@ -32,7 +32,8 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [saEmail, setSaEmail] = useState('');
   const [saLabel, setSaLabel] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const busy = busyKey !== null;
 
   const load = () =>
     api
@@ -48,18 +49,31 @@ export default function Accounts() {
 
   const connectBanner = new URLSearchParams(window.location.search).get('connect');
 
-  const run = async (fn: () => Promise<unknown>, okMsg?: string) => {
-    setBusy(true);
+  // `key` drives the per-button spinner; `onOk` fires after success so each action can report a
+  // specific result (e.g. the token-health verdict, or how many properties were discovered).
+  const run = async <T,>(key: string, fn: () => Promise<T>, onOk?: (r: T) => void) => {
+    setBusyKey(key);
     try {
-      await fn();
+      const result = await fn();
       await load();
-      if (okMsg) toast(okMsg, 'success');
+      onOk?.(result);
     } catch (e) {
       toast(String(e), 'error');
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   };
+
+  const healthTone = (h: TokenHealth): 'success' | 'info' | 'error' =>
+    h === 'valid' ? 'success' : h === 'expires_soon' ? 'info' : 'error';
+  const healthMsg = (h: TokenHealth): string =>
+    h === 'valid'
+      ? 'Token is healthy'
+      : h === 'expires_soon'
+        ? 'Token expires soon — reconnect this account soon'
+        : h === 'broken'
+          ? 'Token is broken — reconnect this account'
+          : 'Token was revoked — reconnect this account';
 
   const connect = async () => {
     const { url } = await api.connectStart();
@@ -75,7 +89,11 @@ export default function Accounts() {
         danger: true,
       })
     ) {
-      void run(() => api.deleteAccount(a.id), 'Account removed');
+      void run(
+        `rm:${a.id}`,
+        () => api.deleteAccount(a.id),
+        () => toast('Account removed', 'success'),
+      );
     }
   };
 
@@ -131,14 +149,32 @@ export default function Accounts() {
                     <Button
                       size="sm"
                       disabled={busy}
-                      onClick={() => void run(() => api.discover(a.id), 'Discovery complete')}
+                      loading={busyKey === `disc:${a.id}`}
+                      onClick={() =>
+                        void run(
+                          `disc:${a.id}`,
+                          () => api.discover(a.id),
+                          (r) =>
+                            toast(
+                              `Discovered ${r.count} ${r.count === 1 ? 'property' : 'properties'}`,
+                              'success',
+                            ),
+                        )
+                      }
                     >
                       Discover
                     </Button>
                     <Button
                       size="sm"
                       disabled={busy}
-                      onClick={() => void run(() => api.checkHealth(a.id))}
+                      loading={busyKey === `health:${a.id}`}
+                      onClick={() =>
+                        void run(
+                          `health:${a.id}`,
+                          () => api.checkHealth(a.id),
+                          (r) => toast(healthMsg(r.tokenHealth), healthTone(r.tokenHealth)),
+                        )
+                      }
                     >
                       Check health
                     </Button>
@@ -146,6 +182,7 @@ export default function Accounts() {
                       size="sm"
                       variant="ghost"
                       disabled={busy}
+                      loading={busyKey === `rm:${a.id}`}
                       onClick={() => void remove(a)}
                     >
                       Remove
@@ -190,8 +227,16 @@ export default function Accounts() {
           <Button
             variant="primary"
             disabled={busy || !saEmail}
+            loading={busyKey === 'sa-register'}
             onClick={() =>
-              void run(() => api.addServiceAccount(saEmail, saLabel), 'Service account registered')
+              void run(
+                'sa-register',
+                () => api.addServiceAccount(saEmail, saLabel),
+                () => {
+                  toast('Service account registered', 'success');
+                  setSaLabel('');
+                },
+              )
             }
           >
             Register

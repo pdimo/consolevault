@@ -35,3 +35,8 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+*.code-workspace
+
+# Local-only working docs & reference material — never push to any remote
+PLAN.md
+temp-screens/

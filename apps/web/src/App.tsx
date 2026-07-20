@@ -4,6 +4,9 @@ import { AppShell } from './components/AppShell';
 import { Spinner } from './components/ui';
 import { Login } from './Login';
 import Overview from './Overview';
+import Dashboards from './Dashboards';
+import Dashboard from './Dashboard';
+import Opportunities from './Opportunities';
 import Accounts from './Accounts';
 import Properties from './Properties';
 import Property from './Property';
@@ -31,6 +34,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<Overview />} />
+        <Route path="/dashboards" element={<Dashboards />} />
+        <Route path="/dashboards/:type/:id" element={<Dashboard />} />
+        <Route path="/opportunities" element={<Opportunities />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/properties" element={<Properties />} />
         <Route path="/properties/:id" element={<Property />} />

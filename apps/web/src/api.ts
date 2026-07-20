@@ -1,4 +1,68 @@
-import type { Account, Property, PropertyGroup, Settings, Task } from '@consolevault/types';
+import type {
+  Account,
+  DashboardListItem,
+  Property,
+  PropertyGroup,
+  MatchRule,
+  SavedFilter,
+  SemanticGroup,
+  Settings,
+  Task,
+  TokenHealth,
+} from '@consolevault/types';
+
+export interface Kpi {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+export interface TsPoint extends Kpi {
+  date: string;
+}
+export interface EntityRow extends Kpi {
+  key: string;
+  /** Prior-period metrics for the same key (present when a comparison window applies). */
+  prev?: Kpi | null;
+}
+export interface GroupRow extends Kpi {
+  key: string;
+  priority?: boolean;
+  rules?: { dimension: 'page' | 'query'; op: string; value: string }[];
+  prev?: Kpi | null;
+}
+export interface ScatterRow {
+  key: string;
+  position: number;
+  ctr: number;
+  impressions: number;
+  clicks: number;
+}
+export interface BucketRow {
+  date: string;
+  top3: number;
+  p4_10: number;
+  p11_20: number;
+  p21_50: number;
+  p50plus: number;
+}
+export interface MoverRow {
+  key: string;
+  clicks: number;
+  prevClicks: number;
+  delta: number;
+  isNew: boolean;
+}
+export interface BrandSplitRow extends Kpi {
+  segment: 'brand' | 'nonbrand';
+}
+export interface BrandTrendPoint {
+  date: string;
+  brand: number;
+  nonbrand: number;
+  brandImpr: number;
+  nonbrandImpr: number;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -71,7 +135,7 @@ export const api = {
   discover: (id: string) =>
     http<{ count: number }>(`/api/accounts/${id}/discover`, { method: 'POST' }),
   checkHealth: (id: string) =>
-    http<{ tokenHealth: string }>(`/api/accounts/${id}/token-health`, { method: 'POST' }),
+    http<{ tokenHealth: TokenHealth }>(`/api/accounts/${id}/token-health`, { method: 'POST' }),
   deleteAccount: (id: string) => http<void>(`/api/accounts/${id}`, { method: 'DELETE' }),
 
   // properties
@@ -118,6 +182,54 @@ export const api = {
   getSettings: () => http<Settings>('/api/settings'),
   putSettings: (s: Settings) =>
     http<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
+
+  // dashboards
+  listDashboards: () => http<DashboardListItem[]>('/api/dashboards'),
+  dashboardKpis: (type: string, id: string, qs: string) =>
+    http<{ current: Kpi | null; previous: Kpi | null }>(`/api/dashboards/${type}/${id}/kpis?${qs}`),
+  dashboardTimeseries: (type: string, id: string, qs: string) =>
+    http<TsPoint[]>(`/api/dashboards/${type}/${id}/timeseries?${qs}`),
+  dashboardReport: <T = unknown>(type: string, id: string, report: string, qs: string) =>
+    http<T>(`/api/dashboards/${type}/${id}/${report}?${qs}`),
+
+  // saved filters
+  listSavedFilters: (scope: string) =>
+    http<SavedFilter[]>(`/api/saved-filters?scope=${encodeURIComponent(scope)}`),
+  createSavedFilter: (scope: string, name: string, params: Record<string, string>) =>
+    http<SavedFilter>('/api/saved-filters', {
+      method: 'POST',
+      body: JSON.stringify({ scope, name, params }),
+    }),
+  deleteSavedFilter: (id: string) =>
+    http<{ ok: true }>(`/api/saved-filters/${id}`, { method: 'DELETE' }),
+
+  // semantic groups (content groups + topic clusters)
+  listSemanticGroups: (propertyId: string, kind?: 'content' | 'topic') =>
+    http<SemanticGroup[]>(
+      `/api/properties/${propertyId}/semantic-groups${kind ? `?kind=${kind}` : ''}`,
+    ),
+  createSemanticGroup: (propertyId: string, g: Omit<SemanticGroup, 'id' | 'propertyId'>) =>
+    http<SemanticGroup>(`/api/properties/${propertyId}/semantic-groups`, {
+      method: 'POST',
+      body: JSON.stringify(g),
+    }),
+  updateSemanticGroup: (
+    propertyId: string,
+    gid: string,
+    g: Omit<SemanticGroup, 'id' | 'propertyId'>,
+  ) =>
+    http<SemanticGroup>(`/api/properties/${propertyId}/semantic-groups/${gid}`, {
+      method: 'PUT',
+      body: JSON.stringify(g),
+    }),
+  deleteSemanticGroup: (propertyId: string, gid: string) =>
+    http<{ ok: true }>(`/api/properties/${propertyId}/semantic-groups/${gid}`, {
+      method: 'DELETE',
+    }),
+  autoSuggestGroups: (propertyId: string, kind: 'content' | 'topic') =>
+    http<{ name: string; rules: MatchRule[] }[]>(
+      `/api/properties/${propertyId}/semantic-groups/auto?kind=${kind}`,
+    ),
 
   // overview
   getOverview: () =>
@@ -176,4 +288,14 @@ export const api = {
         byService: { service: string; cost: number }[];
       } | null;
     }>('/api/costs'),
+  getBillingStatus: () =>
+    http<{
+      enabled: boolean;
+      dataset: string;
+      projectId: string;
+      billingAccountId: string;
+      exportConfigured: boolean;
+      dataFlowing: boolean;
+      lastDataDate: string | null;
+    }>('/api/costs/billing-status'),
 };

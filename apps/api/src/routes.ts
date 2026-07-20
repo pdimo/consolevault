@@ -64,6 +64,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
       included?: boolean;
       config?: CollectionConfig;
       preferredAccountId?: string;
+      dashboardEnabled?: boolean;
+      brandTerms?: string[];
     };
     if (typeof body.included === 'boolean') {
       await propertyRepo.setIncluded(req.params.id, body.included);
@@ -73,6 +75,15 @@ export function registerApiRoutes(app: FastifyInstance): void {
     }
     if (body.preferredAccountId) {
       await propertyRepo.setPreferredAccount(req.params.id, body.preferredAccountId);
+    }
+    if (typeof body.dashboardEnabled === 'boolean') {
+      await propertyRepo.setDashboardEnabled(req.params.id, body.dashboardEnabled);
+    }
+    if (Array.isArray(body.brandTerms)) {
+      await propertyRepo.setBrandTerms(
+        req.params.id,
+        body.brandTerms.map((t) => String(t).trim()).filter(Boolean),
+      );
     }
     const property = await propertyRepo.get(req.params.id);
     if (!property) throw new HttpError(404, 'Property not found');
