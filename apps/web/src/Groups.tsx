@@ -9,53 +9,11 @@ import {
   Card,
   EmptyState,
   PageHeader,
-  Switch,
   TextInput,
   Table,
   Td,
   Th,
 } from './components/ui';
-
-/** Inline brand-terms editor for a group row (comma-separated; saves on demand). */
-function BrandCell({ group, onSaved }: { group: PropertyGroup; onSaved: () => void }) {
-  const toast = useToast();
-  const initial = (group.brandTerms ?? []).join(', ');
-  const [val, setVal] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const dirty = val.trim() !== initial;
-  const save = async () => {
-    setSaving(true);
-    try {
-      await api.patchGroup(group.id, {
-        brandTerms: val
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean),
-      });
-      toast('Brand terms saved', 'success');
-      onSaved();
-    } catch (e) {
-      toast(String(e), 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <div className="flex items-center gap-1">
-      <TextInput
-        className="w-40"
-        placeholder="brand, brand login"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-      />
-      {dirty && (
-        <Button size="sm" loading={saving} onClick={() => void save()}>
-          Save
-        </Button>
-      )}
-    </div>
-  );
-}
 
 export default function Groups() {
   const toast = useToast();
@@ -108,15 +66,15 @@ export default function Groups() {
   return (
     <div>
       <PageHeader
-        title="Property groups"
-        description="Groups union their members at query time (a view in gsc_views). Toggle Materialized to also keep a refreshed table for faster BI."
+        title="Rollups"
+        description="A rollup unions several properties into one queryable view (in gsc_views) so you can report on them together — distinct from a property's content groups & topic clusters. Open a rollup for its report, brand terms and settings."
       />
 
       {groups.length === 0 ? (
         <EmptyState
           icon="❏"
-          title="No groups yet"
-          description="Create a group below to combine properties into one queryable view."
+          title="No rollups yet"
+          description="Create a rollup below to combine properties into one queryable view."
         />
       ) : (
         <Table>
@@ -124,10 +82,7 @@ export default function Groups() {
             <tr>
               <Th>Name</Th>
               <Th>Members</Th>
-              <Th>View</Th>
-              <Th>Materialized</Th>
-              <Th>Dashboard</Th>
-              <Th>Brand terms</Th>
+              <Th>Rollup view</Th>
               <Th />
             </tr>
           </thead>
@@ -135,7 +90,12 @@ export default function Groups() {
             {groups.map((g) => (
               <tr key={g.id} className="hover:bg-surface-2/50">
                 <Td className="font-medium">
-                  {g.name}
+                  <Link
+                    to={`/clients/group/${g.id}/report`}
+                    className="text-accent hover:underline"
+                  >
+                    {g.name}
+                  </Link>
                   {g.doubleCountWarning && (
                     <Badge tone="warn" className="ml-2">
                       double-count risk
@@ -147,47 +107,17 @@ export default function Groups() {
                   <code className="text-xs">{g.viewId ?? '—'}</code>
                 </Td>
                 <Td>
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-accent"
-                      checked={g.materialized ?? false}
-                      onChange={() =>
-                        void api
-                          .patchGroup(g.id, { materialized: !g.materialized })
-                          .then(load)
-                          .then(() =>
-                            toast(g.materialized ? 'Unmaterialized' : 'Materialized', 'success'),
-                          )
-                      }
-                    />
-                    {g.materialized ? <code className="text-xs">{g.viewId}_mat</code> : 'off'}
-                  </label>
-                </Td>
-                <Td>
-                  <Switch
-                    checked={g.dashboardEnabled ?? false}
-                    onChange={() =>
-                      void api
-                        .patchGroup(g.id, { dashboardEnabled: !g.dashboardEnabled })
-                        .then(load)
-                        .then(() =>
-                          toast(
-                            g.dashboardEnabled ? 'Dashboard disabled' : 'Dashboard enabled',
-                            'success',
-                          ),
-                        )
-                    }
-                    label="Dashboard"
-                  />
-                </Td>
-                <Td>
-                  <BrandCell group={g} onSaved={load} />
-                </Td>
-                <Td>
-                  <Button size="sm" variant="ghost" onClick={() => void remove(g)}>
-                    Delete
-                  </Button>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to={`/clients/group/${g.id}/report`}
+                      className="whitespace-nowrap text-sm text-accent hover:underline"
+                    >
+                      Open →
+                    </Link>
+                    <Button size="sm" variant="ghost" onClick={() => void remove(g)}>
+                      Delete
+                    </Button>
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -195,7 +125,7 @@ export default function Groups() {
         </Table>
       )}
 
-      <Card title="New group" className="mt-5">
+      <Card title="New rollup" className="mt-5">
         <p className="mb-3 text-sm text-muted">
           Combine <strong>tracked</strong> properties (e.g. a domain and its sub-domains) into one
           collection. Only tracked properties can be grouped — the union aggregates collected data.

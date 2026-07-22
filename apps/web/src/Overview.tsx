@@ -15,9 +15,42 @@ const MIX = [
   { kind: 'error', name: 'Error', color: 'var(--bad)' },
 ] as const;
 
+type Mover = Awaited<ReturnType<typeof api.getHomeMovers>>['movers'][number];
+
+function MoversCard({ title, rows }: { title: string; rows: Mover[] }) {
+  return (
+    <Card title={title}>
+      {rows.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted">No movement in this window.</p>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {rows.map((m) => (
+            <li key={`${m.type}:${m.id}`}>
+              <Link
+                to={`/clients/${m.type}/${m.id}/report`}
+                className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2"
+              >
+                <span className="truncate text-sm">{m.name}</span>
+                <span className="flex shrink-0 items-center gap-2 text-sm tabular-nums">
+                  <span className="text-muted">{m.clicks.toLocaleString()}</span>
+                  <span className={m.delta >= 0 ? 'text-ok' : 'text-bad'}>
+                    {m.delta >= 0 ? '+' : ''}
+                    {m.delta.toLocaleString()}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function Overview() {
   const [ov, setOv] = useState<Overview | null>(null);
   const [properties, setProperties] = useState<Property[] | null>(null);
+  const [movers, setMovers] = useState<Mover[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,6 +61,10 @@ export default function Overview() {
     api
       .listProperties()
       .then(setProperties)
+      .catch(() => undefined);
+    api
+      .getHomeMovers()
+      .then((r) => setMovers(r.movers))
       .catch(() => undefined);
   }, []);
 
@@ -55,7 +92,7 @@ export default function Overview() {
   if (needsOnboarding) {
     return (
       <div>
-        <PageHeader title="Overview" />
+        <PageHeader title="Home" />
         <EmptyState
           icon="◎"
           title={
@@ -76,9 +113,26 @@ export default function Overview() {
     );
   }
 
+  const gainers = movers
+    .filter((m) => m.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 6);
+  const losers = movers
+    .filter((m) => m.delta < 0)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 6);
+
   return (
     <div>
-      <PageHeader title="Overview" description="A snapshot of your connections and collection." />
+      <PageHeader
+        title="Home"
+        description="Your portfolio at a glance — connections, collection, and where to dig in."
+        actions={
+          <Link to="/clients">
+            <Button variant="primary">Open client reports →</Button>
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -110,6 +164,13 @@ export default function Overview() {
         <StatCard label="Total properties" value={ov.properties.total} />
       </div>
 
+      {(gainers.length > 0 || losers.length > 0) && (
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <MoversCard title="Biggest gainers (28 days)" rows={gainers} />
+          <MoversCard title="Biggest decliners (28 days)" rows={losers} />
+        </div>
+      )}
+
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="Collection activity (14 days)" className="lg:col-span-2">
           {ov.activity.length === 0 ? (
@@ -133,6 +194,12 @@ export default function Overview() {
 
       <Card className="mt-5" title="Next steps">
         <ul className="space-y-2 text-sm">
+          <li className="flex items-center justify-between gap-3">
+            <span>Open a client&apos;s report &amp; opportunities</span>
+            <Link to="/clients" className="text-accent hover:underline">
+              Clients →
+            </Link>
+          </li>
           <li className="flex items-center justify-between gap-3">
             <span>Choose which properties to track</span>
             <Link to="/properties" className="text-accent hover:underline">

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import type { DashboardListItem } from '@consolevault/types';
 import { api, type EntityRow } from './api';
 import {
@@ -34,15 +34,23 @@ const OPP_REPORTS = [
   { slug: 'content-decay', label: 'Content decay' },
 ] as const;
 
-export default function Opportunities() {
+export default function Opportunities({ target: targetProp }: { target?: string } = {}) {
   const [params, setParams] = useSearchParams();
+  const routeParams = useParams();
+  const routed = routeParams.type && routeParams.id ? `${routeParams.type}:${routeParams.id}` : '';
+  // "In workspace" = the client is fixed by the route/prop, so hide the standalone target switcher.
+  const inWorkspace = Boolean(targetProp || routed);
   const report = params.get('report') || 'striking-distance';
   const [list, setList] = useState<DashboardListItem[]>([]);
-  const target = params.get('target') || (list[0] ? `${list[0].type}:${list[0].id}` : '');
+  const target =
+    targetProp ||
+    routed ||
+    params.get('target') ||
+    (list[0] ? `${list[0].type}:${list[0].id}` : '');
 
   useEffect(() => {
     api
-      .listDashboards()
+      .listClients()
       .then(setList)
       .catch(() => undefined);
   }, []);
@@ -62,19 +70,21 @@ export default function Opportunities() {
 
   return (
     <div>
-      <PageHeader
-        title="Opportunities"
-        description="Prioritised, actionable reports — where a small effort yields outsized gains."
-        actions={
-          <Select value={target} onChange={(e) => setParam('target', e.target.value)}>
-            {list.map((d) => (
-              <option key={`${d.type}:${d.id}`} value={`${d.type}:${d.id}`}>
-                {d.name}
-              </option>
-            ))}
-          </Select>
-        }
-      />
+      {!inWorkspace && (
+        <PageHeader
+          title="Opportunities"
+          description="Prioritised, actionable reports — where a small effort yields outsized gains."
+          actions={
+            <Select value={target} onChange={(e) => setParam('target', e.target.value)}>
+              {list.map((d) => (
+                <option key={`${d.type}:${d.id}`} value={`${d.type}:${d.id}`}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+      )}
 
       {/* Sub-nav across the opportunity reports. */}
       <div className="mb-5 flex flex-wrap gap-1 border-b border-line">

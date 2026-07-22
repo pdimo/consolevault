@@ -99,6 +99,11 @@ resource "google_monitoring_alert_policy" "no_collection" {
       aggregations {
         alignment_period   = "3600s"
         per_series_aligner = "ALIGN_DELTA"
+        # Collapse the per-revision label: judge absence for the whole collector service, not each
+        # Cloud Run revision. Without this, a normal redeploy retires the old revision's series and
+        # trips a false "absent" alert ~23h later even while the new revision collects fine.
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
       }
     }
   }

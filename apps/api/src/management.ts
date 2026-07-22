@@ -8,11 +8,13 @@ import type { FastifyInstance } from 'fastify';
 import { CloudTasksClient } from '@google-cloud/tasks';
 import { ExecutionsClient } from '@google-cloud/workflows';
 import {
+  addDays,
   capacityEstimate,
   daysInRange,
   DISPATCH_QPM_PER_ACCOUNT,
   GSC_LIMITS,
   listSites,
+  todayPacific,
   windowFor,
 } from '@consolevault/gsc';
 import {
@@ -334,6 +336,38 @@ export function registerManagementRoutes(app: FastifyInstance): void {
   });
 
   // --- API quota & capacity (SPEC §13 / Stage 6) ---
+  // Portfolio movers for Home: per-client web-clicks delta, last 28 days vs the prior 28.
+  app.get('/api/home/movers', async () => {
+    const curEnd = addDays(todayPacific(), -3);
+    const curStart = addDays(curEnd, -27);
+    const prevEnd = addDays(curStart, -1);
+    const prevStart = addDays(prevEnd, -27);
+    const [rows, properties] = await Promise.all([
+      warehouse.homeMovers({ curStart, curEnd, prevStart, prevEnd }).catch(() => []),
+      propertyRepo.list(),
+    ]);
+    const byTable = new Map(
+      properties.filter((p) => p.included).map((p) => [p.sanitizedTableName, p]),
+    );
+    const movers = rows.flatMap((r) => {
+      const p = byTable.get(r.sourceTable);
+      if (!p) return [];
+      const delta = r.clicks - r.prevClicks;
+      return [
+        {
+          type: 'property' as const,
+          id: p.id,
+          name: p.siteUrl,
+          clicks: r.clicks,
+          prevClicks: r.prevClicks,
+          delta,
+          deltaPct: r.prevClicks > 0 ? (delta / r.prevClicks) * 100 : null,
+        },
+      ];
+    });
+    return { window: { curStart, curEnd, prevStart, prevEnd }, movers };
+  });
+
   app.get('/api/quota', async () => {
     const [usage, accounts, properties] = await Promise.all([
       warehouse.apiUsage(),

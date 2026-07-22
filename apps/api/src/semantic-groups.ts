@@ -1,6 +1,7 @@
 /**
- * Semantic-group CRUD (per-property content groups + topic clusters). Thin layer over
- * SemanticGroupRepository; validates the rule shape. Drives report grouping (Phase 2b).
+ * Semantic-group CRUD (content groups + topic clusters). Scoped to a client target — a property or
+ * a rollup — so both get the same grouping features. Thin layer over SemanticGroupRepository;
+ * validates the rule shape. Legacy `/api/properties/:id/...` paths are kept as aliases.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,53 +25,80 @@ function parseRules(input: unknown, kind: SemanticGroup['kind']): MatchRule[] {
     }));
 }
 
+/** Build a group doc from a request body for `targetId` (reused by create + update). */
+function buildGroup(targetId: string, id: string, body: Partial<SemanticGroup>): SemanticGroup {
+  const name = String(body.name ?? '').trim();
+  if (!name) throw new HttpError(400, 'name is required');
+  const kind: SemanticGroup['kind'] = body.kind === 'content' ? 'content' : 'topic';
+  return {
+    id,
+    // `propertyId` is the stored field name; it holds the target id (property or rollup).
+    propertyId: targetId,
+    kind,
+    name,
+    ...(body.priority ? { priority: true } : {}),
+    rules: parseRules(body.rules, kind),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function registerSemanticGroupRoutes(app: FastifyInstance): void {
   const repo = new SemanticGroupRepository();
 
-  app.get('/api/properties/:id/semantic-groups', async (req): Promise<SemanticGroup[]> => {
-    const { id } = req.params as { id: string };
-    const kind = (req.query as { kind?: string }).kind;
-    return repo.listForProperty(id, kind === 'content' || kind === 'topic' ? kind : undefined);
-  });
+  const list = async (targetId: string, kindRaw?: string): Promise<SemanticGroup[]> =>
+    repo.listForTarget(
+      targetId,
+      kindRaw === 'content' || kindRaw === 'topic' ? kindRaw : undefined,
+    );
 
-  app.post('/api/properties/:id/semantic-groups', async (req): Promise<SemanticGroup> => {
-    const { id } = req.params as { id: string };
-    const body = (req.body ?? {}) as Partial<SemanticGroup>;
-    const name = String(body.name ?? '').trim();
-    if (!name) throw new HttpError(400, 'name is required');
-    const kind: SemanticGroup['kind'] = body.kind === 'content' ? 'content' : 'topic';
-    const group: SemanticGroup = {
-      id: randomUUID(),
-      propertyId: id,
-      kind,
-      name,
-      ...(body.priority ? { priority: true } : {}),
-      rules: parseRules(body.rules, kind),
-      updatedAt: new Date().toISOString(),
-    };
+  const create = async (targetId: string, body: Partial<SemanticGroup>): Promise<SemanticGroup> => {
+    const group = buildGroup(targetId, randomUUID(), body);
     await repo.upsert(group);
     return group;
-  });
+  };
 
-  app.put('/api/properties/:id/semantic-groups/:gid', async (req): Promise<SemanticGroup> => {
+  const update = async (
+    targetId: string,
+    gid: string,
+    body: Partial<SemanticGroup>,
+  ): Promise<SemanticGroup> => {
+    const group = buildGroup(targetId, gid, body);
+    await repo.upsert(group);
+    return group;
+  };
+
+  // --- Target-scoped (property or rollup) ---
+  app.get('/api/clients/:type/:id/semantic-groups', async (req) => {
+    const { id } = req.params as { id: string };
+    return list(id, (req.query as { kind?: string }).kind);
+  });
+  app.post('/api/clients/:type/:id/semantic-groups', async (req) => {
+    const { id } = req.params as { id: string };
+    return create(id, (req.body ?? {}) as Partial<SemanticGroup>);
+  });
+  app.put('/api/clients/:type/:id/semantic-groups/:gid', async (req) => {
     const { id, gid } = req.params as { id: string; gid: string };
-    const body = (req.body ?? {}) as Partial<SemanticGroup>;
-    const name = String(body.name ?? '').trim();
-    if (!name) throw new HttpError(400, 'name is required');
-    const kind: SemanticGroup['kind'] = body.kind === 'content' ? 'content' : 'topic';
-    const group: SemanticGroup = {
-      id: gid,
-      propertyId: id,
-      kind,
-      name,
-      ...(body.priority ? { priority: true } : {}),
-      rules: parseRules(body.rules, kind),
-      updatedAt: new Date().toISOString(),
-    };
-    await repo.upsert(group);
-    return group;
+    return update(id, gid, (req.body ?? {}) as Partial<SemanticGroup>);
+  });
+  app.delete('/api/clients/:type/:id/semantic-groups/:gid', async (req) => {
+    const { id, gid } = req.params as { id: string; gid: string };
+    await repo.delete(id, gid);
+    return { ok: true };
   });
 
+  // --- Legacy property-scoped aliases ---
+  app.get('/api/properties/:id/semantic-groups', async (req) => {
+    const { id } = req.params as { id: string };
+    return list(id, (req.query as { kind?: string }).kind);
+  });
+  app.post('/api/properties/:id/semantic-groups', async (req) => {
+    const { id } = req.params as { id: string };
+    return create(id, (req.body ?? {}) as Partial<SemanticGroup>);
+  });
+  app.put('/api/properties/:id/semantic-groups/:gid', async (req) => {
+    const { id, gid } = req.params as { id: string; gid: string };
+    return update(id, gid, (req.body ?? {}) as Partial<SemanticGroup>);
+  });
   app.delete('/api/properties/:id/semantic-groups/:gid', async (req) => {
     const { id, gid } = req.params as { id: string; gid: string };
     await repo.delete(id, gid);

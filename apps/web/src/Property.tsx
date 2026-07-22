@@ -7,10 +7,8 @@ import type {
   SearchType,
 } from '@consolevault/types';
 import { api, type Coverage } from './api';
-import { Heatmap } from './Heatmap';
 import { useToast } from './components/feedback';
 import { Badge, Button, Card, Field, Spinner, Switch, TextInput, cx } from './components/ui';
-import { SemanticGroupEditor } from './components/SemanticGroupEditor';
 
 const ALL_TYPES: SearchType[] = ['web', 'image', 'video', 'news', 'discover', 'googleNews'];
 const ALL_AGGS: Aggregation[] = ['byProperty', 'byPage', 'totals'];
@@ -41,7 +39,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-export default function Property() {
+export default function Property({ embedded = false }: { embedded?: boolean }) {
   const { id = '' } = useParams();
   const toast = useToast();
   const [property, setProperty] = useState<Prop | null>(null);
@@ -109,7 +107,10 @@ export default function Property() {
     setRunning(true);
     try {
       await api.runPipeline();
-      toast('Pipeline started — coverage will populate shortly.', 'success');
+      toast(
+        "Collection started for all clients — this property's coverage will populate shortly.",
+        'success',
+      );
     } catch (e) {
       toast(String(e), 'error');
     } finally {
@@ -131,13 +132,19 @@ export default function Property() {
 
   return (
     <div>
-      <Link to="/properties" className="text-sm text-accent hover:underline">
-        ← Properties
-      </Link>
+      {!embedded && (
+        <Link to="/properties" className="text-sm text-accent hover:underline">
+          ← Properties
+        </Link>
+      )}
       <div className="mb-5 mt-2 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold break-all">{property.siteUrl}</h1>
-        <Badge>{property.propertyType === 'domain' ? 'Domain' : 'URL-prefix'}</Badge>
-        {included ? <Badge tone="accent">Tracking</Badge> : <Badge>Not tracking</Badge>}
+        {!embedded && (
+          <>
+            <h1 className="text-xl font-semibold break-all">{property.siteUrl}</h1>
+            <Badge>{property.propertyType === 'domain' ? 'Domain' : 'URL-prefix'}</Badge>
+            {included ? <Badge tone="accent">Tracking</Badge> : <Badge>Not tracking</Badge>}
+          </>
+        )}
         {coverage?.freshness ? (
           <Badge tone="ok">fresh to {coverage.freshness}</Badge>
         ) : (
@@ -151,9 +158,9 @@ export default function Property() {
           <Switch
             checked={dashboardEnabled}
             onChange={() => void toggleDashboard()}
-            label="Dashboard"
+            label="Warm daily cache"
           />
-          Dashboard
+          Precompute daily
         </label>
       </div>
 
@@ -162,7 +169,7 @@ export default function Property() {
         actions={
           <div className="flex gap-2">
             <Button loading={running} onClick={() => void runPipeline()}>
-              Run pipeline now
+              Run collection (all clients)
             </Button>
             <Button variant="primary" loading={saving} onClick={() => void save()}>
               Save
@@ -282,35 +289,10 @@ export default function Property() {
 
         <p className="mt-4 text-xs text-muted">
           Collection runs daily at 09:00 Pacific. Track a property and save, then wait for the daily
-          run or click <strong>Run pipeline now</strong> to backfill immediately. Recent days are
-          collected as <strong>fresh</strong> and re-collected automatically until Google finalizes
-          them — no look-back setting needed.
+          run or click <strong>Run collection (all clients)</strong> to backfill now. Recent days
+          are collected as <strong>fresh</strong> and re-collected automatically until Google
+          finalizes them — no look-back setting needed.
         </p>
-      </Card>
-
-      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Content groups">
-          <p className="mb-3 text-sm text-muted">
-            Group pages by URL rules (e.g. all <code>/blog/</code> pages) to analyse them together
-            in the reports.
-          </p>
-          <SemanticGroupEditor propertyId={id} kind="content" />
-        </Card>
-        <Card title="Topic clusters">
-          <p className="mb-3 text-sm text-muted">
-            Group queries by keyword rules (e.g. everything about “pricing”) to see topic-level
-            performance.
-          </p>
-          <SemanticGroupEditor propertyId={id} kind="topic" />
-        </Card>
-      </div>
-
-      <Card title="Coverage" className="mt-5">
-        {coverage ? (
-          <Heatmap cells={coverage.cells} />
-        ) : (
-          <p className="text-sm text-muted">No coverage yet.</p>
-        )}
       </Card>
     </div>
   );

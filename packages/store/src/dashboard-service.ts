@@ -308,14 +308,7 @@ export class DashboardService {
       );
     }
     if (report === 'grouped-entities') {
-      return this.groupedEntities(
-        run,
-        from,
-        type,
-        id,
-        eff,
-        q.kind === 'content' ? 'content' : 'topic',
-      );
+      return this.groupedEntities(run, from, id, eff, q.kind === 'content' ? 'content' : 'topic');
     }
     if (report === 'ctr-benchmark') {
       const { where, params } = compileFilters(eff, { requireQuery: true });
@@ -432,15 +425,18 @@ export class DashboardService {
    * from the property's own top pages/queries over a default 3-month window (ignores saved groups).
    */
   async autoSuggestGroups(
+    type: string,
     id: string,
     kind: 'content' | 'topic',
   ): Promise<{ name: string; rules: MatchRule[] }[]> {
     const dim = kind === 'content' ? 'page' : 'query';
     const dataset = kind === 'content' ? DATASETS.byPage : DATASETS.byProperty;
-    const from = await this.resolveFrom('property', id, dataset);
+    const from = await this.resolveFrom(type, id, dataset);
     if (!from) return [];
-    const prop = await this.props.get(id);
-    const brandTerms = prop?.brandTerms ?? [];
+    const brandTerms =
+      (type === 'group'
+        ? (await this.groups.get(id))?.brandTerms
+        : (await this.props.get(id))?.brandTerms) ?? [];
     const end = todayPacific();
     const eff: DashboardFilters = { searchType: 'web', start: addDays(end, -89), end, brandTerms };
     const requires = dim === 'page' ? { requirePage: true } : { requireQuery: true };
@@ -460,23 +456,20 @@ export class DashboardService {
   }
 
   /**
-   * A property's groups for `kind`: the saved ones, else deterministically auto-derived from the
-   * property's own top pages/queries (zero-setup default). Group targets require explicit groups.
+   * A target's groups for `kind`: the saved ones, else deterministically auto-derived from that
+   * target's own top pages/queries (zero-setup default). Works for properties and rollups alike —
+   * `from` is already the property's table or the rollup's union of member tables.
    */
   private async resolveGroups(
     run: RunFn,
     from: string,
-    type: string,
     id: string,
     eff: DashboardFilters,
     kind: 'content' | 'topic',
   ): Promise<{ name: string; rules: MatchRule[]; priority: boolean }[]> {
-    if (type === 'property') {
-      const saved = await this.semanticGroups.listForProperty(id, kind);
-      if (saved.length)
-        return saved.map((g) => ({ name: g.name, rules: g.rules, priority: !!g.priority }));
-    }
-    if (type !== 'property') return [];
+    const saved = await this.semanticGroups.listForTarget(id, kind);
+    if (saved.length)
+      return saved.map((g) => ({ name: g.name, rules: g.rules, priority: !!g.priority }));
     const dim = kind === 'content' ? 'page' : 'query';
     const requires = dim === 'page' ? { requirePage: true } : { requireQuery: true };
     const seed = compileFilters(eff, requires);
@@ -500,12 +493,11 @@ export class DashboardService {
   private async groupedEntities(
     run: RunFn,
     from: string,
-    type: string,
     id: string,
     eff: DashboardFilters,
     kind: 'content' | 'topic',
   ): Promise<Row[]> {
-    const groups = await this.resolveGroups(run, from, type, id, eff, kind);
+    const groups = await this.resolveGroups(run, from, id, eff, kind);
     if (!groups.length) return [];
     const requires = kind === 'content' ? { requirePage: true } : { requireQuery: true };
     const build = (winFilters: DashboardFilters) => {

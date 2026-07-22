@@ -183,8 +183,10 @@ export const api = {
   putSettings: (s: Settings) =>
     http<Settings>('/api/settings', { method: 'PUT', body: JSON.stringify(s) }),
 
-  // dashboards
+  // dashboards / clients
   listDashboards: () => http<DashboardListItem[]>('/api/dashboards'),
+  // Every tracked property + group (not gated on dashboardEnabled) — the client-first workspace list.
+  listClients: () => http<DashboardListItem[]>('/api/clients'),
   dashboardKpis: (type: string, id: string, qs: string) =>
     http<{ current: Kpi | null; previous: Kpi | null }>(`/api/dashboards/${type}/${id}/kpis?${qs}`),
   dashboardTimeseries: (type: string, id: string, qs: string) =>
@@ -203,32 +205,33 @@ export const api = {
   deleteSavedFilter: (id: string) =>
     http<{ ok: true }>(`/api/saved-filters/${id}`, { method: 'DELETE' }),
 
-  // semantic groups (content groups + topic clusters)
-  listSemanticGroups: (propertyId: string, kind?: 'content' | 'topic') =>
+  // semantic groups (content groups + topic clusters) — scoped to a client target: property OR rollup
+  listSemanticGroups: (type: string, id: string, kind?: 'content' | 'topic') =>
     http<SemanticGroup[]>(
-      `/api/properties/${propertyId}/semantic-groups${kind ? `?kind=${kind}` : ''}`,
+      `/api/clients/${type}/${id}/semantic-groups${kind ? `?kind=${kind}` : ''}`,
     ),
-  createSemanticGroup: (propertyId: string, g: Omit<SemanticGroup, 'id' | 'propertyId'>) =>
-    http<SemanticGroup>(`/api/properties/${propertyId}/semantic-groups`, {
+  createSemanticGroup: (type: string, id: string, g: Omit<SemanticGroup, 'id' | 'propertyId'>) =>
+    http<SemanticGroup>(`/api/clients/${type}/${id}/semantic-groups`, {
       method: 'POST',
       body: JSON.stringify(g),
     }),
   updateSemanticGroup: (
-    propertyId: string,
+    type: string,
+    id: string,
     gid: string,
     g: Omit<SemanticGroup, 'id' | 'propertyId'>,
   ) =>
-    http<SemanticGroup>(`/api/properties/${propertyId}/semantic-groups/${gid}`, {
+    http<SemanticGroup>(`/api/clients/${type}/${id}/semantic-groups/${gid}`, {
       method: 'PUT',
       body: JSON.stringify(g),
     }),
-  deleteSemanticGroup: (propertyId: string, gid: string) =>
-    http<{ ok: true }>(`/api/properties/${propertyId}/semantic-groups/${gid}`, {
+  deleteSemanticGroup: (type: string, id: string, gid: string) =>
+    http<{ ok: true }>(`/api/clients/${type}/${id}/semantic-groups/${gid}`, {
       method: 'DELETE',
     }),
-  autoSuggestGroups: (propertyId: string, kind: 'content' | 'topic') =>
+  autoSuggestGroups: (type: string, id: string, kind: 'content' | 'topic') =>
     http<{ name: string; rules: MatchRule[] }[]>(
-      `/api/properties/${propertyId}/semantic-groups/auto?kind=${kind}`,
+      `/api/clients/${type}/${id}/semantic-groups/auto?kind=${kind}`,
     ),
 
   // overview
@@ -243,6 +246,21 @@ export const api = {
       latestFinalDate: string | null;
       activity: { date: string; tasks: number; rows: number }[];
     }>('/api/overview'),
+
+  // home — portfolio movers (per-client clicks delta, 28d vs prior 28d)
+  getHomeMovers: () =>
+    http<{
+      window: { curStart: string; curEnd: string; prevStart: string; prevEnd: string };
+      movers: {
+        type: 'property';
+        id: string;
+        name: string;
+        clicks: number;
+        prevClicks: number;
+        delta: number;
+        deltaPct: number | null;
+      }[];
+    }>('/api/home/movers'),
 
   // quota
   getQuota: () =>

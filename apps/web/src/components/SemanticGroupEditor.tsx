@@ -33,10 +33,12 @@ const emptyDraft = (): Draft => ({
 });
 
 export function SemanticGroupEditor({
-  propertyId,
+  targetType,
+  targetId,
   kind,
 }: {
-  propertyId: string;
+  targetType: string;
+  targetId: string;
   kind: 'content' | 'topic';
 }) {
   const toast = useToast();
@@ -47,12 +49,12 @@ export function SemanticGroupEditor({
 
   const reload = () =>
     api
-      .listSemanticGroups(propertyId, kind)
+      .listSemanticGroups(targetType, targetId, kind)
       .then(setGroups)
       .catch(() => setGroups([]));
   useEffect(() => {
     reload();
-  }, [propertyId, kind]);
+  }, [targetType, targetId, kind]);
 
   const startEdit = (g: SemanticGroup) => {
     setEditId(g.id);
@@ -80,8 +82,8 @@ export function SemanticGroupEditor({
         })),
     };
     try {
-      if (editId === 'new') await api.createSemanticGroup(propertyId, payload);
-      else if (editId) await api.updateSemanticGroup(propertyId, editId, payload);
+      if (editId === 'new') await api.createSemanticGroup(targetType, targetId, payload);
+      else if (editId) await api.updateSemanticGroup(targetType, targetId, editId, payload);
       setEditId(null);
       await reload();
       toast('Saved', 'success');
@@ -92,7 +94,7 @@ export function SemanticGroupEditor({
 
   const remove = async (id: string) => {
     try {
-      await api.deleteSemanticGroup(propertyId, id);
+      await api.deleteSemanticGroup(targetType, targetId, id);
       await reload();
     } catch {
       toast('Delete failed', 'error');
@@ -103,13 +105,13 @@ export function SemanticGroupEditor({
   const generate = async () => {
     setGenerating(true);
     try {
-      const suggestions = await api.autoSuggestGroups(propertyId, kind);
+      const suggestions = await api.autoSuggestGroups(targetType, targetId, kind);
       const existing = new Set((groups ?? []).map((g) => g.name.toLowerCase()));
       const fresh = suggestions.filter((s) => !existing.has(s.name.toLowerCase()));
       if (!fresh.length) return toast('No new groups to add', 'info');
       await Promise.all(
         fresh.map((s) =>
-          api.createSemanticGroup(propertyId, { kind, name: s.name, rules: s.rules }),
+          api.createSemanticGroup(targetType, targetId, { kind, name: s.name, rules: s.rules }),
         ),
       );
       await reload();

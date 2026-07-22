@@ -224,6 +224,35 @@ export class Warehouse {
   }
 
   /**
+   * Portfolio movers (Home): total web clicks per property over a current vs prior window, in one
+   * byte-capped query over the cross-property `byProperty_all` view. `source_table` is each
+   * property's sanitized table name, mapped back to a client by the caller. Returns [] if the
+   * wildcard view doesn't exist yet.
+   */
+  async homeMovers(w: {
+    curStart: string;
+    curEnd: string;
+    prevStart: string;
+    prevEnd: string;
+  }): Promise<Array<{ sourceTable: string; clicks: number; prevClicks: number }>> {
+    if (!(await this.tableExists(DATASETS.views, 'byProperty_all'))) return [];
+    const rows = await this.runAnalytics(
+      `SELECT source_table,
+          SUM(IF(data_date BETWEEN @curStart AND @curEnd, clicks, 0)) AS clicks,
+          SUM(IF(data_date BETWEEN @prevStart AND @prevEnd, clicks, 0)) AS prev_clicks
+        FROM ${this.tableRef(DATASETS.views, 'byProperty_all')}
+        WHERE data_date BETWEEN @prevStart AND @curEnd AND search_type = 'web'
+        GROUP BY source_table`,
+      w,
+    );
+    return rows.map((r) => ({
+      sourceTable: String(r.source_table),
+      clicks: Number(r.clicks ?? 0),
+      prevClicks: Number(r.prev_clicks ?? 0),
+    }));
+  }
+
+  /**
    * Real recent spend from a Cloud Billing export dataset (SPEC §11, opt-in). Sums the standard
    * `gcp_billing_export_v1_*` table over the last 30 days, by service. Returns null if the export
    * isn't set up (dataset/table missing) so the Costs panel falls back to the storage estimate.

@@ -10,37 +10,26 @@ interface NavItem {
   icon: string;
 }
 const NAV: { group?: string; items: NavItem[] }[] = [
-  { items: [{ to: '/overview', label: 'Overview', icon: '▤' }] },
+  { items: [{ to: '/home', label: 'Home', icon: '▤' }] },
   {
-    group: 'Analytics',
+    group: 'Clients',
     items: [
-      { to: '/dashboards', label: 'Dashboards', icon: '◫' },
-      { to: '/opportunities', label: 'Opportunities', icon: '◎' },
-    ],
-  },
-  {
-    group: 'Data',
-    items: [
+      { to: '/clients', label: 'Clients', icon: '◧' },
       { to: '/properties', label: 'Properties', icon: '▦' },
-      { to: '/groups', label: 'Groups', icon: '❏' },
+      { to: '/groups', label: 'Rollups', icon: '❏' },
     ],
   },
-  { group: 'Connections', items: [{ to: '/accounts', label: 'Accounts', icon: '⚿' }] },
   {
-    group: 'Operations',
+    group: 'Admin',
     items: [
+      { to: '/accounts', label: 'Connections', icon: '⚿' },
       { to: '/jobs', label: 'Jobs', icon: '↻' },
       { to: '/health', label: 'Health', icon: '✚' },
-    ],
-  },
-  {
-    group: 'Usage',
-    items: [
       { to: '/costs', label: 'Costs', icon: '$' },
       { to: '/quota', label: 'Quota', icon: '◔' },
+      { to: '/settings', label: 'Settings', icon: '⚙' },
     ],
   },
-  { items: [{ to: '/settings', label: 'Settings', icon: '⚙' }] },
 ];
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {

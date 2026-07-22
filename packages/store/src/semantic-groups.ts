@@ -1,7 +1,9 @@
 /**
- * Firestore repository for per-property semantic groups — content groups (page rules) and topic
- * clusters (query rules). Docs are keyed `${propertyId}__${id}` so a property's groups list with a
- * single-field query. These drive report grouping (Phase 2b); no collection/analytics impact here.
+ * Firestore repository for semantic groups — content groups (page rules) and topic clusters (query
+ * rules). Scoped to a *client target*: a property or a rollup. Docs are keyed `${targetId}__${id}`
+ * so one target's groups list with a single-field query. (The stored field is still named
+ * `propertyId` for back-compat with existing docs; it holds the target id, property or rollup.)
+ * These drive report grouping; no collection/analytics impact here.
  */
 
 import type { Firestore } from '@google-cloud/firestore';
@@ -19,12 +21,9 @@ export class SemanticGroupRepository {
     return `${g.propertyId}__${g.id}`;
   }
 
-  /** All groups for a property, optionally filtered to one kind. */
-  async listForProperty(
-    propertyId: string,
-    kind?: SemanticGroup['kind'],
-  ): Promise<SemanticGroup[]> {
-    const snap = await this.col().where('propertyId', '==', propertyId).get();
+  /** All groups for a target (property or rollup), optionally filtered to one kind. */
+  async listForTarget(targetId: string, kind?: SemanticGroup['kind']): Promise<SemanticGroup[]> {
+    const snap = await this.col().where('propertyId', '==', targetId).get();
     const groups = snap.docs.map((d) => d.data() as SemanticGroup);
     return (kind ? groups.filter((g) => g.kind === kind) : groups).sort((a, b) =>
       a.name.localeCompare(b.name),
@@ -35,7 +34,9 @@ export class SemanticGroupRepository {
     await this.col().doc(this.docId(group)).set(group);
   }
 
-  async delete(propertyId: string, id: string): Promise<void> {
-    await this.col().doc(this.docId({ propertyId, id })).delete();
+  async delete(targetId: string, id: string): Promise<void> {
+    await this.col()
+      .doc(this.docId({ propertyId: targetId, id }))
+      .delete();
   }
 }

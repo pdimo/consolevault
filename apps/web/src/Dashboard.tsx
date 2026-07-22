@@ -257,7 +257,7 @@ function EntityTable({
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ embedded = false }: { embedded?: boolean }) {
   const { type = '', id = '' } = useParams();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -397,7 +397,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     api
-      .listDashboards()
+      .listClients()
       .then(setList)
       .catch(() => undefined);
   }, []);
@@ -550,25 +550,27 @@ export default function Dashboard() {
 
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        description={name}
-        actions={
-          <Select
-            value={`${type}:${id}`}
-            onChange={(e) => {
-              const [t, i] = e.target.value.split(':');
-              navigate(`/dashboards/${t}/${i}`);
-            }}
-          >
-            {list.map((d) => (
-              <option key={`${d.type}:${d.id}`} value={`${d.type}:${d.id}`}>
-                {d.name}
-              </option>
-            ))}
-          </Select>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title="Dashboard"
+          description={name}
+          actions={
+            <Select
+              value={`${type}:${id}`}
+              onChange={(e) => {
+                const [t, i] = e.target.value.split(':');
+                navigate(`/clients/${t}/${i}/report`);
+              }}
+            >
+              {list.map((d) => (
+                <option key={`${d.type}:${d.id}`} value={`${d.type}:${d.id}`}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+      )}
 
       {/* Report toolbar: metric + search-type + brand segment + date/compare menu + mode + filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -1042,7 +1044,7 @@ export default function Dashboard() {
         ].map((o) => (
           <Link
             key={o.slug}
-            to={`/opportunities?target=${type}:${id}&report=${o.slug}`}
+            to={`/clients/${type}/${id}/opportunities?report=${o.slug}`}
             className="group rounded-xl border border-line bg-surface p-4 transition-colors hover:border-accent/50"
           >
             <p className="font-medium text-fg">{o.label}</p>

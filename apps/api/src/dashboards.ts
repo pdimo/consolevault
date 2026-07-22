@@ -65,6 +65,29 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     ];
   });
 
+  // All manageable clients (tracked properties + all groups) — the client-first workspace list.
+  // NOT gated on dashboardEnabled (that flag now only controls daily cache warming): every tracked
+  // client has a report, served on demand by the same byte-capped report endpoints below.
+  app.get('/api/clients', async (): Promise<DashboardListItem[]> => {
+    const [properties, groups] = await Promise.all([propertyRepo.list(), groupRepo.list()]);
+    return [
+      ...properties
+        .filter((p) => p.included)
+        .map((p) => ({
+          type: 'property' as const,
+          id: p.id,
+          name: p.siteUrl,
+          ...(p.brandTerms?.length ? { brandTerms: p.brandTerms } : {}),
+        })),
+      ...groups.map((g) => ({
+        type: 'group' as const,
+        id: g.id,
+        name: g.name,
+        ...(g.brandTerms?.length ? { brandTerms: g.brandTerms } : {}),
+      })),
+    ];
+  });
+
   // One cached endpoint per report.
   for (const report of REPORTS) {
     app.get(`/api/dashboards/:type/:id/${report}`, async (req) => {
@@ -100,10 +123,16 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
-  // Deterministic group suggestions for the property editor's "Generate automatically".
+  // Deterministic group suggestions for the "Generate automatically" button. Target-scoped so it
+  // works for rollups too (the union of member tables), with the legacy property path kept.
+  app.get('/api/clients/:type/:id/semantic-groups/auto', async (req) => {
+    const { type, id } = req.params as { type: string; id: string };
+    const kind = (req.query as { kind?: string }).kind === 'content' ? 'content' : 'topic';
+    return svc.autoSuggestGroups(type, id, kind);
+  });
   app.get('/api/properties/:id/semantic-groups/auto', async (req) => {
     const { id } = req.params as { id: string };
     const kind = (req.query as { kind?: string }).kind === 'content' ? 'content' : 'topic';
-    return svc.autoSuggestGroups(id, kind);
+    return svc.autoSuggestGroups('property', id, kind);
   });
 }
