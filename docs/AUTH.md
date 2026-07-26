@@ -98,10 +98,12 @@ No consent screen. Each client grants a service account read access to their pro
 
 ---
 
-## This deployment
+## Which scenario should I use?
 
-`your-gcp-project-id` is a standalone project with no Workspace org, so it uses **Scenario B
-(External + In production)**. Internal is unavailable here.
+Most self-deployers use **Scenario B (External + In production)**: a standalone project (e.g. owned
+by a `@gmail.com` account) has no Workspace org, so **Internal** isn't available. If your project
+lives inside a Google Workspace organization, prefer **Scenario A (Internal)** — stable tokens and no
+consent-screen publishing needed.
 
 ## Browser sign-in & in-UI account connect (Stage 4)
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from './api';
 import type { Property } from '@consolevault/types';
 import { propertyStatus } from './propertyStatus';
-import { Button, Card, EmptyState, PageHeader, Spinner, StatCard } from './components/ui';
+import { Button, Card, cx, EmptyState, PageHeader, Spinner, StatCard } from './components/ui';
 import { Donut, TrendArea } from './components/charts';
 
 type Overview = Awaited<ReturnType<typeof api.getOverview>>;
@@ -51,6 +51,7 @@ export default function Overview() {
   const [ov, setOv] = useState<Overview | null>(null);
   const [properties, setProperties] = useState<Property[] | null>(null);
   const [movers, setMovers] = useState<Mover[]>([]);
+  const [settings, setSettings] = useState<{ alertEmail?: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +66,10 @@ export default function Overview() {
     api
       .getHomeMovers()
       .then((r) => setMovers(r.movers))
+      .catch(() => undefined);
+    api
+      .getSettings()
+      .then(setSettings)
       .catch(() => undefined);
   }, []);
 
@@ -121,6 +126,29 @@ export default function Overview() {
     .filter((m) => m.delta < 0)
     .sort((a, b) => a.delta - b.delta)
     .slice(0, 6);
+
+  const steps = [
+    {
+      done: ov.accounts.total > 0,
+      label: 'Connect a Google account',
+      to: '/accounts',
+      cta: 'Connect',
+    },
+    {
+      done: ov.properties.tracking > 0,
+      label: 'Track the properties you want',
+      to: '/properties',
+      cta: 'Properties',
+    },
+    { done: ov.rows > 0, label: 'Run your first collection', to: '/jobs', cta: 'Jobs' },
+    {
+      done: Boolean(settings?.alertEmail),
+      label: 'Set an alert email for failures',
+      to: '/settings',
+      cta: 'Settings',
+    },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
 
   return (
     <div>
@@ -192,39 +220,35 @@ export default function Overview() {
         </Card>
       </div>
 
-      <Card className="mt-5" title="Next steps">
-        <ul className="space-y-2 text-sm">
-          <li className="flex items-center justify-between gap-3">
-            <span>Open a client&apos;s report &amp; opportunities</span>
-            <Link to="/clients" className="text-accent hover:underline">
-              Clients →
-            </Link>
-          </li>
-          <li className="flex items-center justify-between gap-3">
-            <span>Choose which properties to track</span>
-            <Link to="/properties" className="text-accent hover:underline">
-              Properties →
-            </Link>
-          </li>
-          <li className="flex items-center justify-between gap-3">
-            <span>Check collection health &amp; recent jobs</span>
-            <Link to="/jobs" className="text-accent hover:underline">
-              Jobs →
-            </Link>
-          </li>
-          <li className="flex items-center justify-between gap-3">
-            <span>Review API capacity &amp; storage costs</span>
-            <span className="flex gap-3">
-              <Link to="/quota" className="text-accent hover:underline">
-                Quota →
-              </Link>
-              <Link to="/costs" className="text-accent hover:underline">
-                Costs →
-              </Link>
-            </span>
-          </li>
-        </ul>
-      </Card>
+      {doneCount < steps.length && (
+        <Card className="mt-5" title={`Finish setting up · ${doneCount}/${steps.length}`}>
+          <ul className="flex flex-col">
+            {steps.map((s) => (
+              <li
+                key={s.to}
+                className="flex items-center justify-between gap-3 border-b border-line py-2 last:border-0"
+              >
+                <span className="flex items-center gap-2.5 text-sm">
+                  <span
+                    className={cx(
+                      'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px]',
+                      s.done ? 'bg-ok/15 text-ok' : 'border border-line text-muted',
+                    )}
+                  >
+                    {s.done ? '✓' : ''}
+                  </span>
+                  <span className={s.done ? 'text-muted line-through' : ''}>{s.label}</span>
+                </span>
+                {!s.done && (
+                  <Link to={s.to} className="shrink-0 text-sm text-accent hover:underline">
+                    {s.cta} →
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

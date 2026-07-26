@@ -22,8 +22,11 @@ without budgeting for CASA.
 
 ## Deploy
 
-**One command** (from a clone, with `gcloud`/`terraform`/`pnpm`/`docker` installed and
-`gcloud auth login` + `gcloud auth application-default login` done):
+**New to Google Cloud?** Start with the [**30-minute Getting Started guide**](./docs/GETTING-STARTED.md)
+— non-technical, copy-paste, and browser-only via Cloud Shell. The short version:
+
+**One command** (with `gcloud` + `terraform` installed — or just use **Cloud Shell**, which has
+them — and `gcloud auth login` + `gcloud auth application-default login` done):
 
 ```bash
 ./setup.sh
@@ -36,8 +39,11 @@ above for a guided walkthrough. For the manual path and per-scenario detail see
 
 > `bq_location` (BigQuery + Firestore) is **permanent** and cannot be changed later — choose once.
 
-After deploy: open the UI, sign in with an admin email, connect your Google account(s)
-([docs/AUTH.md](./docs/AUTH.md)), set your alert email in **Settings**, include properties, run.
+After deploy: open the UI — a **setup wizard** shows the exact values to create your Google Web OAuth
+client, then `./setup.sh` uploads it (see [docs/AUTH.md](./docs/AUTH.md) for every scenario). Sign in,
+**Connect Google account**, set your alert email in **Settings**, include properties, and run.
+Prefer to look around first? **Settings → Sample data** adds a demo client with fully populated
+reports.
 
 ## Configuration (per-install, nothing hardcoded)
 

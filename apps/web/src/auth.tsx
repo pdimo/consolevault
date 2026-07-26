@@ -6,6 +6,9 @@ interface AuthState {
   email?: string;
   googleClientId?: string;
   collectorServiceAccount?: string;
+  needsSetup?: boolean;
+  redirectUri?: string;
+  jsOrigin?: string;
   error?: string;
 }
 
@@ -29,16 +32,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = async () => {
     try {
       const cfg = await api.config();
+      const cfgBits = {
+        collectorServiceAccount: cfg.collectorServiceAccount,
+        needsSetup: cfg.needsSetup,
+        redirectUri: cfg.redirectUri,
+        jsOrigin: cfg.jsOrigin,
+        ...(cfg.googleClientId ? { googleClientId: cfg.googleClientId } : {}),
+      };
       try {
         const me = await api.me();
-        setState({
-          status: 'authed',
-          email: me.email,
-          googleClientId: cfg.googleClientId,
-          collectorServiceAccount: cfg.collectorServiceAccount,
-        });
+        setState({ status: 'authed', email: me.email, ...cfgBits });
       } catch {
-        setState({ status: 'anon', googleClientId: cfg.googleClientId });
+        setState({ status: 'anon', ...cfgBits });
       }
     } catch (e) {
       setState({ status: 'anon', error: String(e) });

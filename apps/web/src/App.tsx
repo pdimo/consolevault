@@ -3,6 +3,7 @@ import { useAuth } from './auth';
 import { AppShell } from './components/AppShell';
 import { Spinner } from './components/ui';
 import { Login } from './Login';
+import SetupWizard from './SetupWizard';
 import Overview from './Overview';
 import Clients from './Clients';
 import ClientWorkspace from './ClientWorkspace';
@@ -40,6 +41,7 @@ export default function App() {
       </div>
     );
   }
+  if (state.needsSetup) return <SetupWizard />;
   if (state.status !== 'authed') return <Login />;
 
   return (

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { Settings as SettingsType } from '@consolevault/types';
 import { api } from './api';
+import { isDemoOn, setDemo } from './demo/fixtures';
 import { useToast } from './components/feedback';
-import { Button, Card, Field, PageHeader, Spinner, TextInput } from './components/ui';
+import { Button, Card, Field, PageHeader, Spinner, Switch, TextInput } from './components/ui';
 
 export default function Settings() {
   const toast = useToast();
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [saving, setSaving] = useState(false);
+  const [demo, setDemoState] = useState(isDemoOn());
 
   useEffect(() => {
     void api.getSettings().then(setSettings);
@@ -87,6 +89,26 @@ export default function Settings() {
           <Button variant="primary" loading={saving} onClick={() => void save()}>
             Save
           </Button>
+        </div>
+      </Card>
+
+      <Card title="Sample data" className="mt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-xl text-sm text-muted">
+            Add a read-only <strong>demo client</strong> with realistic sample data so you can
+            explore the reports before connecting Search Console. It appears in Clients as
+            “sample-agency.com (demo)”. Turn it off any time to hide it.
+          </p>
+          <Switch
+            checked={demo}
+            onChange={() => {
+              const next = !demo;
+              setDemo(next);
+              setDemoState(next);
+              window.location.reload();
+            }}
+            label="Sample data"
+          />
         </div>
       </Card>
     </div>

@@ -17,7 +17,7 @@ terraform {
   # deployer overrides it with `terraform init -backend-config="bucket=<their-bucket>"`
   # (redistributability is templatized in Stage 5). `prefix` namespaces this project's state.
   backend "gcs" {
-    bucket = "your-gcp-project-id-tfstate"
+    bucket = "your-gcp-project-id-tfstate" # overridden by setup.sh via -backend-config="bucket=…"
     prefix = "consolevault/stage0"
   }
 }

@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars and fill in. NEVER commit terraform.tfvars.
 project_id   = "your-gcp-project-id"
-state_bucket = "your-gcp-project-id-tfstate"   # already exists, versioned
+state_bucket = "your-gcp-project-id-tfstate"   # setup.sh creates this (versioned) if missing
 
 # Pick ONCE — permanent for BigQuery + Firestore. "US" | "EU" | a region e.g.
 # "australia-southeast1". See README decision note.

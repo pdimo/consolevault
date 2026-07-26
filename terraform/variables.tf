@@ -1,6 +1,6 @@
 variable "project_id" {
   type        = string
-  description = "GCP project id (e.g. your-gcp-project-id)."
+  description = "GCP project id (e.g. your-company-seo)."
 }
 
 variable "region" {

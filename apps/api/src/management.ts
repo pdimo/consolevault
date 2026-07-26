@@ -27,7 +27,9 @@ import { buildUnionViewSql, DATASETS } from '@consolevault/bq';
 import type { Aggregation, PropertyGroup, SearchType, Settings, Task } from '@consolevault/types';
 import {
   accountRepo,
+  adminEmails,
   config,
+  getWebClientConfig,
   groupRepo,
   propertyRepo,
   secretStore,
@@ -102,6 +104,20 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       detail: `${accounts.length} account(s)`,
     });
 
+    // The #1 silent-death cause: an External consent screen left in "Testing" expires refresh
+    // tokens after 7 days. Publishing status isn't exposed by any API, so this is reactive — it
+    // fires once a token has actually broken and points at the most likely fix.
+    const deadOauth = accounts.filter(
+      (a) => a.type === 'oauth' && (a.tokenHealth === 'broken' || a.tokenHealth === 'revoked'),
+    );
+    if (deadOauth.length > 0) {
+      checks.push({
+        name: 'OAuth token durability',
+        ok: false,
+        detail: `${deadOauth.length} OAuth token(s) broken/revoked. If this happened ~7 days after connecting, your OAuth consent screen is in "Testing" — publish it to "In production" and reconnect (docs/AUTH.md).`,
+      });
+    }
+
     const probe = accounts.find((a) => a.tokenHealth === 'valid') ?? accounts[0];
     try {
       if (!probe) throw new Error('no account');
@@ -164,6 +180,30 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     } catch (err) {
       checks.push({ name: 'Table-name collisions', ok: false, detail: errMsg(err) });
     }
+
+    // Setup-health (catch the misconfigurations that silently break sign-in).
+    try {
+      const wc = await getWebClientConfig();
+      checks.push({
+        name: 'Web OAuth client',
+        ok: Boolean(wc.clientId),
+        detail: wc.clientId ? 'configured' : 'not configured — browser sign-in disabled',
+      });
+    } catch {
+      checks.push({
+        name: 'Web OAuth client',
+        ok: false,
+        detail: 'not configured — re-run setup.sh to upload it',
+      });
+    }
+    checks.push({
+      name: 'Admin access',
+      ok: adminEmails.length > 0,
+      detail:
+        adminEmails.length > 0
+          ? `${adminEmails.length} admin email(s)`
+          : 'no admin emails — set admin_emails in terraform.tfvars',
+    });
 
     return { ok: checks.every((c) => c.ok), checks };
   });

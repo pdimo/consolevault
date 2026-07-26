@@ -11,7 +11,7 @@ set -euo pipefail
 
 APP="${1:?usage: build-push.sh <api|workers> [TAG] [PROJECT_ID] [REGION] [APP_NAME]}"
 TAG="${2:-latest}"
-PROJECT_ID="${3:-your-gcp-project-id}"
+PROJECT_ID="${3:?usage: build-push.sh <api|workers> <TAG> <PROJECT_ID> [REGION] [APP_NAME]}"
 REGION="${4:-us-central1}"
 APP_NAME="${5:-consolevault}"
 

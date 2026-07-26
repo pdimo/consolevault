@@ -6,7 +6,8 @@ one-command `setup.sh`, or the manual steps it automates.
 ## Prerequisites
 
 - A GCP project with **billing enabled** and you as Owner (or equivalent).
-- `gcloud` CLI, `terraform` ≥ 1.5, Node 20+ with `pnpm`, and `docker`.
+- `gcloud` CLI and `terraform` ≥ 1.5. Images build in **Cloud Build** — no local Docker or Node
+  needed. Easiest of all (and required on Windows): **Cloud Shell**, which has both preinstalled.
 - Authenticated:
   ```bash
   gcloud auth login

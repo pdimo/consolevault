@@ -3,14 +3,14 @@ import { loadConfig, MissingConfigError } from './index.js';
 
 describe('loadConfig', () => {
   const base = {
-    GCP_PROJECT_ID: 'your-gcp-project-id',
+    GCP_PROJECT_ID: 'test-project-123',
     GCP_REGION: 'us-central1',
     BQ_LOCATION: 'US',
   } satisfies NodeJS.ProcessEnv;
 
   it('loads required values and defaults appName', () => {
     const cfg = loadConfig({ ...base });
-    expect(cfg.projectId).toBe('your-gcp-project-id');
+    expect(cfg.projectId).toBe('test-project-123');
     expect(cfg.region).toBe('us-central1');
     expect(cfg.bqLocation).toBe('US');
     expect(cfg.appName).toBe('consolevault');

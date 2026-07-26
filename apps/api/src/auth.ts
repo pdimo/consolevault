@@ -40,10 +40,22 @@ export function authHook(req: FastifyRequest, reply: FastifyReply, done: () => v
 export function registerAuthRoutes(app: FastifyInstance): void {
   // Public: the Web client id the Sign-In button needs (not secret) + the deployment's GSC-facing
   // service account (the email clients add to their Search Console for the service-account path).
-  app.get('/api/config', async () => ({
-    googleClientId: (await getWebClientConfig()).clientId,
-    collectorServiceAccount: `sa-collector@${config.projectId}.iam.gserviceaccount.com`,
-  }));
+  app.get('/api/config', async (req) => {
+    let googleClientId: string | null = null;
+    try {
+      googleClientId = (await getWebClientConfig()).clientId || null;
+    } catch {
+      googleClientId = null; // Web client not provisioned yet → first-run setup wizard.
+    }
+    const host = req.hostname;
+    return {
+      googleClientId,
+      needsSetup: !googleClientId,
+      redirectUri: `https://${host}/api/oauth/callback`,
+      jsOrigin: `https://${host}`,
+      collectorServiceAccount: `sa-collector@${config.projectId}.iam.gserviceaccount.com`,
+    };
+  });
 
   app.post('/api/auth/google', async (req, reply) => {
     const { idToken } = (req.body ?? {}) as { idToken?: string };

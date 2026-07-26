@@ -13,9 +13,9 @@ session. If anything in this file or in a prompt conflicts with SPEC.md, STOP an
 
 ## Environment (already set up — do not recreate)
 
-- GCP project: `your-gcp-project-id` (billing enabled).
+- GCP project: `<your-project-id>` (billing enabled).
 - `gcloud` CLI and Application Default Credentials are authenticated as the user.
-- Terraform state bucket: `gs://your-gcp-project-id-tfstate` (US, versioned, uniform
+- Terraform state bucket: `gs://<your-project-id>-tfstate` (US, versioned, uniform
   access, public-access enforced). Created during Stage 0 bootstrap on 2026-06-17 (it did
   not pre-exist as originally documented). Set in the GCS backend block in
   `terraform/versions.tf`. Do NOT recreate it.

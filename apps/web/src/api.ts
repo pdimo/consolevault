@@ -64,6 +64,17 @@ export interface BrandTrendPoint {
   nonbrandImpr: number;
 }
 
+import {
+  DEMO_ID,
+  demoClient,
+  demoCoverage,
+  demoKpis,
+  demoProperty,
+  demoReport,
+  demoTimeseries,
+  isDemoOn,
+} from './demo/fixtures';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -115,7 +126,14 @@ export interface LogRow {
 
 export const api = {
   // auth
-  config: () => http<{ googleClientId: string; collectorServiceAccount: string }>('/api/config'),
+  config: () =>
+    http<{
+      googleClientId: string | null;
+      needsSetup: boolean;
+      redirectUri: string;
+      jsOrigin: string;
+      collectorServiceAccount: string;
+    }>('/api/config'),
   me: () => http<{ email: string }>('/api/auth/me'),
   signIn: (idToken: string) =>
     http<{ email: string }>('/api/auth/google', {
@@ -139,7 +157,10 @@ export const api = {
   deleteAccount: (id: string) => http<void>(`/api/accounts/${id}`, { method: 'DELETE' }),
 
   // properties
-  listProperties: () => http<Property[]>('/api/properties'),
+  listProperties: async () => {
+    const list = await http<Property[]>('/api/properties');
+    return isDemoOn() ? [demoProperty, ...list] : list;
+  },
   patchProperty: (id: string, patch: Partial<Property>) =>
     http<Property>(`/api/properties/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   bulkSetIncluded: (ids: string[], included: boolean) =>
@@ -147,8 +168,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ids, included }),
     }),
-  coverage: (id: string) => http<Coverage>(`/api/properties/${id}/coverage`),
-  anomaly: (id: string) => http<{ anomalyPct: number | null }>(`/api/properties/${id}/anomaly`),
+  coverage: (id: string) =>
+    isDemoOn() && id === DEMO_ID
+      ? Promise.resolve(demoCoverage())
+      : http<Coverage>(`/api/properties/${id}/coverage`),
+  anomaly: (id: string) =>
+    isDemoOn() && id === DEMO_ID
+      ? Promise.resolve({ anomalyPct: 0.031 })
+      : http<{ anomalyPct: number | null }>(`/api/properties/${id}/anomaly`),
   recollect: (id: string, date: string, searchType: string, aggregation: string) =>
     http<{ task: string }>(`/api/properties/${id}/recollect`, {
       method: 'POST',
@@ -186,13 +213,24 @@ export const api = {
   // dashboards / clients
   listDashboards: () => http<DashboardListItem[]>('/api/dashboards'),
   // Every tracked property + group (not gated on dashboardEnabled) — the client-first workspace list.
-  listClients: () => http<DashboardListItem[]>('/api/clients'),
+  listClients: async () => {
+    const list = await http<DashboardListItem[]>('/api/clients');
+    return isDemoOn() ? [demoClient, ...list] : list;
+  },
   dashboardKpis: (type: string, id: string, qs: string) =>
-    http<{ current: Kpi | null; previous: Kpi | null }>(`/api/dashboards/${type}/${id}/kpis?${qs}`),
+    isDemoOn() && id === DEMO_ID
+      ? Promise.resolve(demoKpis())
+      : http<{ current: Kpi | null; previous: Kpi | null }>(
+          `/api/dashboards/${type}/${id}/kpis?${qs}`,
+        ),
   dashboardTimeseries: (type: string, id: string, qs: string) =>
-    http<TsPoint[]>(`/api/dashboards/${type}/${id}/timeseries?${qs}`),
+    isDemoOn() && id === DEMO_ID
+      ? Promise.resolve(demoTimeseries())
+      : http<TsPoint[]>(`/api/dashboards/${type}/${id}/timeseries?${qs}`),
   dashboardReport: <T = unknown>(type: string, id: string, report: string, qs: string) =>
-    http<T>(`/api/dashboards/${type}/${id}/${report}?${qs}`),
+    isDemoOn() && id === DEMO_ID
+      ? Promise.resolve(demoReport(report, qs) as T)
+      : http<T>(`/api/dashboards/${type}/${id}/${report}?${qs}`),
 
   // saved filters
   listSavedFilters: (scope: string) =>
