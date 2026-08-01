@@ -228,25 +228,34 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
     const mapped = mapRowsToGscRows(rawRows, mapParams, startedAt, isFinal);
 
     // totals pass (SPEC §7.2): keep the raw daily total and add the anonymized-query delta row
-    // (total − sum(byProperty) for the day). The byProperty sum may be 0 if not yet collected;
-    // re-collection while the day is fresh refines it later.
+    // (total − sum(byProperty) for the day). The planner only schedules a totals day once its
+    // byProperty day is terminal, so the sum is complete. Defensive guard for a stray/manual totals
+    // task: if byProperty isn't terminal yet, skip the delta (subtracting 0 would flag the whole day
+    // anonymized) and write only the raw total — the delta lands when totals re-runs post-byProperty.
     const totalsRow = mapped[0];
     if (aggregation === 'totals' && totalsRow) {
-      const sum = await warehouse.sumByProperty(
-        property.sanitizedTableName,
-        input.dataDate,
-        searchType,
+      const bp = await taskRepo.get(
+        taskId(input.propertyId, searchType, 'byProperty', input.dataDate),
       );
-      const clicks = Math.max(0, totalsRow.clicks - sum.clicks);
-      const impressions = Math.max(0, totalsRow.impressions - sum.impressions);
-      mapped.push({
-        ...totalsRow,
-        clicks,
-        impressions,
-        ctr: impressions > 0 ? clicks / impressions : 0,
-        position: 0,
-        is_anonymized: true,
-      });
+      const bpReady =
+        bp != null && (bp.status === 'collected_with_data' || bp.status === 'collected_no_data');
+      if (bpReady) {
+        const sum = await warehouse.sumByProperty(
+          property.sanitizedTableName,
+          input.dataDate,
+          searchType,
+        );
+        const clicks = Math.max(0, totalsRow.clicks - sum.clicks);
+        const impressions = Math.max(0, totalsRow.impressions - sum.impressions);
+        mapped.push({
+          ...totalsRow,
+          clicks,
+          impressions,
+          ctr: impressions > 0 ? clicks / impressions : 0,
+          position: 0,
+          is_anonymized: true,
+        });
+      }
     }
 
     const rows: GscRow[] = mapped.map((r) => ({ ...r, row_hash: rowHash(r) }));

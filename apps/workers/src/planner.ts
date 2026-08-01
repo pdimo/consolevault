@@ -58,8 +58,17 @@ export async function reconcile(): Promise<{ properties: number; created: number
         // Skip API-unsupported cells (e.g. discover/googleNews × byProperty) — don't create doomed tasks.
         if (!isValidCombo(searchType, aggregation)) continue;
         const terminal = terminalByCell.get(`${searchType}|${aggregation}`) ?? new Set<string>();
+        // `totals` derives the anonymized-query delta as total − sum(byProperty) for the same day
+        // (SPEC §7.2). Only plan a totals day once its byProperty day is TERMINAL (so the rows are
+        // in BigQuery) — otherwise the delta subtracts 0 and the whole day is flagged anonymized,
+        // and once the day finalizes it never self-corrects (the Phase-D bug this fixes).
+        const bpTerminal =
+          aggregation === 'totals'
+            ? (terminalByCell.get(`${searchType}|byProperty`) ?? new Set<string>())
+            : null;
         const missing = computeMissingDays(allDays, terminal);
         for (const day of missing) {
+          if (bpTerminal && !bpTerminal.has(day)) continue; // defer totals until byProperty[day] final
           const id = taskId(property.id, searchType, aggregation, day);
           const ex = existing.get(id);
           // Don't clobber an in-flight task (Cloud Tasks name dedup also protects double-runs).
