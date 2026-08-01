@@ -23,6 +23,8 @@ import {
   groupedMetricsSql,
   groupMatchExpr,
   kpisSql,
+  nativeLandingDataset,
+  nativePageViewName,
   positionBucketsSql,
   strikingDistanceSql,
   timeseriesSql,
@@ -189,12 +191,37 @@ export class DashboardService {
     private readonly semanticGroups = new SemanticGroupRepository(),
   ) {}
 
-  private async resolveFrom(type: string, id: string, dataset: string): Promise<string | null> {
+  /**
+   * Resolve a property/rollup to a FROM operand AND the BigQuery location the query must run in.
+   * A cross-region native-export property's adapter views live in a region-local landing dataset
+   * and its query runs in that region (SPEC §12 — "query where the data lives"). Everything else
+   * runs in the deploy region. Rollups union only deploy-region tables (cross-region native members
+   * aren't in gsc_byProperty, so `tableExists` naturally excludes them).
+   */
+  private async resolveFrom(
+    type: string,
+    id: string,
+    dataset: string,
+  ): Promise<{ from: string; location: string } | null> {
+    const deploy = this.warehouse.location;
     if (type === 'property') {
       const p = await this.props.get(id);
       if (!p) return null;
+      // Cross-region native export → region-local landing dataset + that region's location.
+      if (
+        p.source === 'native_export' &&
+        p.exportLocation &&
+        p.exportLocation.toUpperCase() !== deploy.toUpperCase()
+      ) {
+        const landing = nativeLandingDataset(p.exportLocation);
+        const view =
+          dataset === DATASETS.byPage
+            ? nativePageViewName(p.sanitizedTableName)
+            : p.sanitizedTableName;
+        return { from: fromTable(this.projectId, landing, view), location: p.exportLocation };
+      }
       return (await this.warehouse.tableExists(dataset, p.sanitizedTableName))
-        ? fromTable(this.projectId, dataset, p.sanitizedTableName)
+        ? { from: fromTable(this.projectId, dataset, p.sanitizedTableName), location: deploy }
         : null;
     }
     const g = await this.groups.get(id);
@@ -208,7 +235,9 @@ export class DashboardService {
         tables.push(m.sanitizedTableName);
       }
     }
-    return tables.length ? fromUnion(this.projectId, dataset, tables) : null;
+    return tables.length
+      ? { from: fromUnion(this.projectId, dataset, tables), location: deploy }
+      : null;
   }
 
   /** Run a report and return its serializable data. */
@@ -227,10 +256,12 @@ export class DashboardService {
       (report === 'movers' && q.dim === 'page') ||
       (report === 'grouped-entities' && q.kind === 'content');
     const dataset = usesPage ? DATASETS.byPage : DATASETS.byProperty;
-    const from = await this.resolveFrom(type, id, dataset);
-    if (!from) return report === 'kpis' ? { current: null, previous: null } : [];
+    const resolved = await this.resolveFrom(type, id, dataset);
+    if (!resolved) return report === 'kpis' ? { current: null, previous: null } : [];
+    const { from, location } = resolved;
+    // Run in the resolved location (the deploy region, or a cross-region native export's own region).
     const run = (sql: string, params: Record<string, unknown>) =>
-      this.warehouse.runAnalytics(sql, params);
+      this.warehouse.runAnalytics(sql, params, 2, location);
 
     // The brand segment classifies on `query`; byPage has no query dimension, so strip it there.
     const eff = usesPage ? withoutSegment(filters) : filters;
@@ -431,8 +462,9 @@ export class DashboardService {
   ): Promise<{ name: string; rules: MatchRule[] }[]> {
     const dim = kind === 'content' ? 'page' : 'query';
     const dataset = kind === 'content' ? DATASETS.byPage : DATASETS.byProperty;
-    const from = await this.resolveFrom(type, id, dataset);
-    if (!from) return [];
+    const resolved = await this.resolveFrom(type, id, dataset);
+    if (!resolved) return [];
+    const { from, location } = resolved;
     const brandTerms =
       (type === 'group'
         ? (await this.groups.get(id))?.brandTerms
@@ -444,6 +476,8 @@ export class DashboardService {
     const rows = await this.warehouse.runAnalytics(
       topEntitySql(from, seed.where, dim, dim === 'page' ? 500 : 1000),
       seed.params,
+      2,
+      location,
     );
     return dim === 'page'
       ? autoContentGroups(

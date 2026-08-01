@@ -38,7 +38,9 @@ locals {
     api = [
       "roles/datastore.user",
       "roles/secretmanager.admin",
-      "roles/bigquery.jobUser",
+      # bigquery.user = jobUser + datasets.create: create region-local landing datasets for
+      # cross-region native exports (SPEC §12). Data reads are still dataset-scoped (viewer bindings).
+      "roles/bigquery.user",
       "roles/workflows.invoker",
       "roles/workflows.viewer",
       "roles/cloudtasks.queueAdmin",
@@ -67,8 +69,8 @@ locals {
       "roles/workflows.invoker",
       "roles/run.invoker",
       "roles/logging.logWriter",
-      # Build materialized group tables (CREATE OR REPLACE TABLE in gsc_views from gsc_byProperty).
-      "roles/bigquery.jobUser",
+      # Build materialized group tables + create region-local native landing datasets (SPEC §12).
+      "roles/bigquery.user",
     ]
   }
 

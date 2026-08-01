@@ -198,22 +198,20 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     for (const a of exportAccounts) {
       const ds = a.exportDataset!;
       try {
-        // Location first — a cross-location export can't be queried at all, so report that clearly
-        // rather than as a generic read failure.
-        const loc = await warehouse.getDatasetLocation(ds.projectId, ds.datasetId);
-        if (loc && loc.toUpperCase() !== warehouse.location.toUpperCase()) {
-          checks.push({
-            name: `BigQuery export: ${ds.datasetId}`,
-            ok: false,
-            detail: `dataset is in "${loc}" but ConsoleVault is in "${warehouse.location}" — BigQuery can't query across locations. Recreate the export in a "${warehouse.location}" dataset, or deploy ConsoleVault in "${loc}".`,
-          });
-          continue;
-        }
-        const latest = await warehouse.latestExportDate(ds.projectId, ds.datasetId);
+        // Read in the export's own region (cross-region is supported — SPEC §12, query-where-it-lives).
+        const loc =
+          ds.location ??
+          (await warehouse.getDatasetLocation(ds.projectId, ds.datasetId)) ??
+          warehouse.location;
+        const sameRegion = loc.toUpperCase() === warehouse.location.toUpperCase();
+        const latest = await warehouse.latestExportDate(ds.projectId, ds.datasetId, loc);
+        const where = sameRegion ? loc : `${loc} (cross-region)`;
         checks.push({
           name: `BigQuery export: ${ds.datasetId}`,
           ok: true,
-          detail: latest ? `readable — latest export ${latest}` : 'readable — no export rows yet',
+          detail: latest
+            ? `readable in ${where} — latest export ${latest}`
+            : `readable in ${where} — no export rows yet`,
         });
       } catch (err) {
         checks.push({

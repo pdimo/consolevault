@@ -22,6 +22,7 @@ function makeDeps(overrides: Partial<AccountCleanupDeps> = {}): {
       delete: vi.fn(async () => {}),
     },
     warehouse: {
+      location: 'US',
       dropNativeExportViews: vi.fn(async () => {}),
       refreshWildcardViews: vi.fn(async () => []),
     },
@@ -114,7 +115,7 @@ describe('deleteAccountCascade', () => {
       propertyRepo: {
         listNativeByAccount: vi.fn(async () => [
           { id: 'p1', sanitizedTableName: 'urlp_a' },
-          { id: 'p2', sanitizedTableName: 'domain_b' },
+          { id: 'p2', sanitizedTableName: 'domain_b', exportLocation: 'australia-southeast1' },
         ]) as never,
         listNativeExportTableNames: vi.fn(async () => []),
         delete: vi.fn(async () => {}),
@@ -124,8 +125,12 @@ describe('deleteAccountCascade', () => {
     const summary = await deleteAccountCascade('exp', deps);
 
     expect(summary.propertiesDeleted).toBe(2);
-    expect(deps.warehouse.dropNativeExportViews).toHaveBeenCalledWith('urlp_a');
-    expect(deps.warehouse.dropNativeExportViews).toHaveBeenCalledWith('domain_b');
+    // Location is threaded so cross-region views drop from their region-local landing dataset.
+    expect(deps.warehouse.dropNativeExportViews).toHaveBeenCalledWith('urlp_a', undefined);
+    expect(deps.warehouse.dropNativeExportViews).toHaveBeenCalledWith(
+      'domain_b',
+      'australia-southeast1',
+    );
     expect(deps.propertyRepo.delete).toHaveBeenCalledTimes(2);
     expect(deps.warehouse.refreshWildcardViews).toHaveBeenCalledTimes(1);
     expect(deps.accountRepo.delete).toHaveBeenCalledWith('exp');

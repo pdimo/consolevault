@@ -91,9 +91,10 @@ export interface Account {
   /**
    * For `bigquery_export` connections only: the GSC native Bulk Export dataset to read
    * (SPEC §12). `projectId` defaults to this deployment's project; `datasetId` defaults to
-   * `searchconsole` (GSC's default export dataset name).
+   * `searchconsole` (GSC's default export dataset name). `location` is the dataset's BigQuery
+   * location, detected at connect — reports for a cross-region export run in that location.
    */
-  exportDataset?: { projectId: string; datasetId: string };
+  exportDataset?: { projectId: string; datasetId: string; location?: string };
 }
 
 /** Per-property collection configuration (SPEC §7, §8). */
@@ -121,6 +122,12 @@ export interface Property {
    * reporting layer treats both identically (the adapter views expose the shared row schema).
    */
   source?: PropertySource;
+  /**
+   * For `native_export` properties: the BigQuery location of the source export dataset. When it
+   * differs from the deployment's `bq_location`, the property's adapter views live in a region-local
+   * dataset and its reports run in this location (BigQuery can't query across locations, SPEC §12).
+   */
+  exportLocation?: string;
   /** Whether collection is enabled for this property. */
   included: boolean;
   /** Preferred account for collection; failover order in `accountIds` (SPEC §3). */

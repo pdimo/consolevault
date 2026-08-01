@@ -133,6 +133,7 @@ export const api = {
       redirectUri: string;
       jsOrigin: string;
       collectorServiceAccount: string;
+      exportReaderServiceAccounts?: string[];
     }>('/api/config'),
   me: () => http<{ email: string }>('/api/auth/me'),
   signIn: (idToken: string) =>

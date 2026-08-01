@@ -16,6 +16,8 @@ import {
   buildNativeByPropertyViewSql,
   distinctExportSiteUrlsSql,
   latestExportDateSql,
+  nativeLandingDataset,
+  nativePageViewName,
 } from './native-export.js';
 
 export interface WarehouseConfig {
@@ -215,11 +217,12 @@ export class Warehouse {
     query: string,
     params: Record<string, unknown>,
     maxGiB = 2,
+    location: string = this.cfg.location,
   ): Promise<Array<Record<string, unknown>>> {
     const [rows] = await this.bq.query({
       query,
       params,
-      location: this.cfg.location,
+      location,
       maximumBytesBilled: String(Math.round(maxGiB * 1024 ** 3)),
     });
     return rows as Array<Record<string, unknown>>;
@@ -450,30 +453,60 @@ export class Warehouse {
     exportProjectId: string,
     exportDatasetId: string,
     siteUrl: string,
+    exportLocation: string = this.cfg.location,
   ): Promise<void> {
-    await this.createOrReplaceViewIn(
-      DATASETS.byProperty,
-      sanitizedTableName,
-      buildNativeByPropertyViewSql(exportProjectId, exportDatasetId, siteUrl),
-    );
-    await this.createOrReplaceViewIn(
-      DATASETS.byPage,
-      sanitizedTableName,
-      buildNativeByPageViewSql(exportProjectId, exportDatasetId, siteUrl),
-    );
+    const sameRegion = exportLocation.toUpperCase() === this.cfg.location.toUpperCase();
+    const byPropSql = buildNativeByPropertyViewSql(exportProjectId, exportDatasetId, siteUrl);
+    const byPageSql = buildNativeByPageViewSql(exportProjectId, exportDatasetId, siteUrl);
+    if (sameRegion) {
+      // Drop-in at gsc_byProperty/gsc_byPage so the property folds into the wildcard _all views.
+      await this.createOrReplaceViewIn(DATASETS.byProperty, sanitizedTableName, byPropSql);
+      await this.createOrReplaceViewIn(DATASETS.byPage, sanitizedTableName, byPageSql);
+    } else {
+      // Cross-region: views + queries must run in the export's region (SPEC §12). Put them in a
+      // region-local landing dataset; byProperty keeps the plain name, byPage gets a "__page" suffix.
+      const landing = nativeLandingDataset(exportLocation);
+      await this.ensureDataset(landing, exportLocation);
+      await this.createOrReplaceViewIn(landing, sanitizedTableName, byPropSql, exportLocation);
+      await this.createOrReplaceViewIn(
+        landing,
+        nativePageViewName(sanitizedTableName),
+        byPageSql,
+        exportLocation,
+      );
+    }
   }
 
   /** Remove a native-export property's adapter views (connection/property removal). */
-  async dropNativeExportViews(sanitizedTableName: string): Promise<void> {
-    await this.dropViewIn(DATASETS.byProperty, sanitizedTableName);
-    await this.dropViewIn(DATASETS.byPage, sanitizedTableName);
+  async dropNativeExportViews(
+    sanitizedTableName: string,
+    exportLocation: string = this.cfg.location,
+  ): Promise<void> {
+    if (exportLocation.toUpperCase() === this.cfg.location.toUpperCase()) {
+      await this.dropViewIn(DATASETS.byProperty, sanitizedTableName);
+      await this.dropViewIn(DATASETS.byPage, sanitizedTableName);
+    } else {
+      const landing = nativeLandingDataset(exportLocation);
+      await this.dropViewIn(landing, sanitizedTableName, exportLocation);
+      await this.dropViewIn(landing, nativePageViewName(sanitizedTableName), exportLocation);
+    }
+  }
+
+  /** Create a dataset in a specific location if it doesn't exist (region-local native landing). */
+  async ensureDataset(datasetId: string, location: string): Promise<void> {
+    const [exists] = await this.bq.dataset(datasetId).exists();
+    if (!exists) await this.bq.createDataset(datasetId, { location });
   }
 
   /** Distinct site_urls in a native-export dataset — the property list for discovery (SPEC §12). */
-  async listExportSiteUrls(exportProjectId: string, exportDatasetId: string): Promise<string[]> {
+  async listExportSiteUrls(
+    exportProjectId: string,
+    exportDatasetId: string,
+    location: string = this.cfg.location,
+  ): Promise<string[]> {
     const [rows] = await this.bq.query({
       query: distinctExportSiteUrlsSql(exportProjectId, exportDatasetId),
-      location: this.cfg.location,
+      location,
     });
     return (rows as Array<{ site_url?: string }>)
       .map((r) => r.site_url)
@@ -481,10 +514,14 @@ export class Warehouse {
   }
 
   /** Most recent exported day (ExportLog) — freshness for the UI/Doctor. Null if unavailable. */
-  async latestExportDate(exportProjectId: string, exportDatasetId: string): Promise<string | null> {
+  async latestExportDate(
+    exportProjectId: string,
+    exportDatasetId: string,
+    location: string = this.cfg.location,
+  ): Promise<string | null> {
     const [rows] = await this.bq.query({
       query: latestExportDateSql(exportProjectId, exportDatasetId),
-      location: this.cfg.location,
+      location,
     });
     const r = (rows[0] ?? {}) as { latest?: { value?: string } | string | null };
     const v = r.latest;
@@ -588,19 +625,28 @@ export class Warehouse {
     await this.createOrReplaceViewIn(DATASETS.views, viewId, selectSql);
   }
 
-  /** Create or replace a view in an arbitrary dataset (native-export adapter views, SPEC §12). */
-  async createOrReplaceViewIn(datasetId: string, viewId: string, selectSql: string): Promise<void> {
+  /** Create or replace a view in an arbitrary dataset/location (native-export adapter views, §12). */
+  async createOrReplaceViewIn(
+    datasetId: string,
+    viewId: string,
+    selectSql: string,
+    location: string = this.cfg.location,
+  ): Promise<void> {
     await this.bq.query({
       query: `CREATE OR REPLACE VIEW \`${this.cfg.projectId}.${datasetId}.${viewId}\` AS ${selectSql}`,
-      location: this.cfg.location,
+      location,
     });
   }
 
-  /** Drop a view in an arbitrary dataset if it exists. */
-  async dropViewIn(datasetId: string, viewId: string): Promise<void> {
+  /** Drop a view in an arbitrary dataset/location if it exists. */
+  async dropViewIn(
+    datasetId: string,
+    viewId: string,
+    location: string = this.cfg.location,
+  ): Promise<void> {
     await this.bq.query({
       query: `DROP VIEW IF EXISTS \`${this.cfg.projectId}.${datasetId}.${viewId}\``,
-      location: this.cfg.location,
+      location,
     });
   }
 

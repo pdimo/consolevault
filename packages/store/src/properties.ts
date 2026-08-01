@@ -48,6 +48,8 @@ export interface DiscoveredProperty {
   at: string; // ISO 8601
   /** `native_export` for Bulk Export imports; omitted (→ `api`) for Sites:list discovery. */
   source?: PropertySource;
+  /** BigQuery location of the source export dataset (native_export only). */
+  exportLocation?: string;
 }
 
 /** Normalize a raw Sites:list entry into a {@link DiscoveredProperty}. */
@@ -73,6 +75,7 @@ export function discoveredFromExportSite(
   accountId: string,
   siteUrl: string,
   at: string,
+  exportLocation?: string,
 ): DiscoveredProperty {
   const id = sanitizeTableName(siteUrl);
   return {
@@ -83,6 +86,7 @@ export function discoveredFromExportSite(
     accountId,
     at,
     source: 'native_export',
+    ...(exportLocation !== undefined ? { exportLocation } : {}),
   };
 }
 
@@ -102,6 +106,7 @@ export function mergeDiscoveredProperty(
   const groupIds = existing?.groupIds;
   const source = d.source ?? existing?.source;
   const isNative = source === 'native_export';
+  const exportLocation = d.exportLocation ?? existing?.exportLocation;
   return {
     id: d.id,
     siteUrl: d.siteUrl,
@@ -116,6 +121,7 @@ export function mergeDiscoveredProperty(
     discoveredAt: existing?.discoveredAt ?? d.at,
     lastSeenAt: d.at,
     ...(source !== undefined ? { source } : {}),
+    ...(exportLocation !== undefined ? { exportLocation } : {}),
     ...(permissionLevel !== undefined ? { permissionLevel } : {}),
     ...(groupIds !== undefined ? { groupIds } : {}),
   };
@@ -167,10 +173,11 @@ export class PropertyRepository {
     accountId: string,
     siteUrls: string[],
     at: string,
+    exportLocation?: string,
   ): Promise<Array<{ siteUrl: string; sanitizedTableName: string }>> {
     const out: Array<{ siteUrl: string; sanitizedTableName: string }> = [];
     for (const siteUrl of siteUrls) {
-      await this.upsertDiscovered(discoveredFromExportSite(accountId, siteUrl, at));
+      await this.upsertDiscovered(discoveredFromExportSite(accountId, siteUrl, at, exportLocation));
       const saved = await this.getBySiteUrl(siteUrl);
       out.push({
         siteUrl,
@@ -186,10 +193,19 @@ export class PropertyRepository {
     return snap.docs[0]?.data() as Property | undefined;
   }
 
-  /** Sanitized table names of every native-export property (to fold into the wildcard `_all` views). */
-  async listNativeExportTableNames(): Promise<string[]> {
+  /**
+   * Sanitized table names of native-export properties whose adapter views live in gsc_byProperty/
+   * gsc_byPage — i.e. SAME-region as the deployment — to fold into the wildcard `_all` views.
+   * Cross-region native properties live in a region-local dataset and can't join the `_all` union.
+   */
+  async listNativeExportTableNames(deployLocation: string): Promise<string[]> {
     const snap = await this.col().where('source', '==', 'native_export').get();
-    return snap.docs.map((d) => (d.data() as Property).sanitizedTableName);
+    return snap.docs
+      .map((d) => d.data() as Property)
+      .filter(
+        (p) => !p.exportLocation || p.exportLocation.toUpperCase() === deployLocation.toUpperCase(),
+      )
+      .map((p) => p.sanitizedTableName);
   }
 
   async list(): Promise<Property[]> {

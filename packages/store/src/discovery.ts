@@ -43,21 +43,32 @@ export async function discoverExportConnection(
     throw new Error(`Not a BigQuery-export connection: ${account.id}`);
   }
   const { projectId, datasetId } = account.exportDataset;
-  // BigQuery can't query across locations, so the live adapter views require the export dataset to
-  // sit in the same location as ConsoleVault (SPEC §12). Fail early with a clear, actionable error.
-  const exportLoc = await warehouse.getDatasetLocation(projectId, datasetId);
-  if (exportLoc && exportLoc.toUpperCase() !== warehouse.location.toUpperCase()) {
-    throw new Error(
-      `Export dataset ${projectId}.${datasetId} is in "${exportLoc}", but ConsoleVault's BigQuery location is "${warehouse.location}". BigQuery can't query across locations — the export must be in the same location. Either create the GSC export in a "${warehouse.location}" dataset, or deploy ConsoleVault in "${exportLoc}".`,
+  // Detect the export's BigQuery location. BigQuery can't query across locations, so a cross-region
+  // export's adapter views + reports run in ITS region (SPEC §12) — "query where the data lives".
+  const location = (await warehouse.getDatasetLocation(projectId, datasetId)) ?? warehouse.location;
+  // Persist the detected location on the connection (UI/Doctor + report execution use it).
+  await accountRepo.update(account.id, { exportDataset: { projectId, datasetId, location } });
+
+  const siteUrls = await warehouse.listExportSiteUrls(projectId, datasetId, location);
+  const now = new Date().toISOString();
+  const resolved = await propertyRepo.upsertNativeFromDiscovery(
+    account.id,
+    siteUrls,
+    now,
+    location,
+  );
+  for (const { siteUrl, sanitizedTableName } of resolved) {
+    await warehouse.provisionNativeExportViews(
+      sanitizedTableName,
+      projectId,
+      datasetId,
+      siteUrl,
+      location,
     );
   }
-  const siteUrls = await warehouse.listExportSiteUrls(projectId, datasetId);
-  const now = new Date().toISOString();
-  const resolved = await propertyRepo.upsertNativeFromDiscovery(account.id, siteUrls, now);
-  for (const { siteUrl, sanitizedTableName } of resolved) {
-    await warehouse.provisionNativeExportViews(sanitizedTableName, projectId, datasetId, siteUrl);
-  }
-  const nativeTables = await propertyRepo.listNativeExportTableNames();
+  // Only same-region native properties fold into the wildcard `_all` views (cross-region can't
+  // join a single-region view). listNativeExportTableNames already filters to same-region.
+  const nativeTables = await propertyRepo.listNativeExportTableNames(warehouse.location);
   await warehouse.refreshWildcardViews({
     [DATASETS.byProperty]: nativeTables,
     [DATASETS.byPage]: nativeTables,

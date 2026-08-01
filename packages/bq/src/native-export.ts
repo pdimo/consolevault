@@ -28,6 +28,25 @@ export const NATIVE_EXPORT_TABLES = {
 /** GSC's default Bulk Export dataset name (user-customizable at export setup). */
 export const DEFAULT_EXPORT_DATASET = 'searchconsole';
 
+/** BigQuery-safe form of a location id for use in a dataset name (e.g. "australia-southeast1"). */
+export function sanitizeRegion(location: string): string {
+  return location.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+}
+
+/**
+ * Landing dataset (in ConsoleVault's project, in the export's region) that holds the adapter views
+ * for cross-region native exports (SPEC §12). Same-region exports use gsc_byProperty/gsc_byPage
+ * directly; only a location that differs from the deployment gets its own region-local dataset.
+ */
+export function nativeLandingDataset(location: string): string {
+  return `gsc_native_${sanitizeRegion(location)}`;
+}
+
+/** byPage adapter-view name inside a native landing dataset (byProperty uses the plain name). */
+export function nativePageViewName(sanitizedTableName: string): string {
+  return `${sanitizedTableName}__page`;
+}
+
 /** Property type from a siteUrl, without depending on @consolevault/gsc (same rule as sanitize). */
 export function nativePropertyType(siteUrl: string): 'url_prefix' | 'domain' {
   return siteUrl.startsWith('sc-domain:') ? 'domain' : 'url_prefix';

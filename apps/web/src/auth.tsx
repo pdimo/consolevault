@@ -6,6 +6,7 @@ interface AuthState {
   email?: string;
   googleClientId?: string;
   collectorServiceAccount?: string;
+  exportReaderServiceAccounts?: string[];
   needsSetup?: boolean;
   redirectUri?: string;
   jsOrigin?: string;
@@ -38,6 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         redirectUri: cfg.redirectUri,
         jsOrigin: cfg.jsOrigin,
         ...(cfg.googleClientId ? { googleClientId: cfg.googleClientId } : {}),
+        ...(cfg.exportReaderServiceAccounts
+          ? { exportReaderServiceAccounts: cfg.exportReaderServiceAccounts }
+          : {}),
       };
       try {
         const me = await api.me();

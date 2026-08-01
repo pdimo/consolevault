@@ -28,7 +28,7 @@ export interface AccountCleanupDeps {
     PropertyRepository,
     'listNativeByAccount' | 'delete' | 'listNativeExportTableNames'
   >;
-  warehouse: Pick<Warehouse, 'dropNativeExportViews' | 'refreshWildcardViews'>;
+  warehouse: Pick<Warehouse, 'dropNativeExportViews' | 'refreshWildcardViews' | 'location'>;
   config: Pick<AppConfig, 'projectId' | 'region'>;
 }
 
@@ -79,12 +79,16 @@ export async function deleteAccountCascade(
   if (account?.type === 'bigquery_export') {
     const properties = await deps.propertyRepo.listNativeByAccount(id);
     for (const p of properties) {
-      await deps.warehouse.dropNativeExportViews(p.sanitizedTableName);
+      // Pass the export location so cross-region adapter views are dropped from their region-local
+      // landing dataset (not the deploy-region gsc_byProperty/gsc_byPage).
+      await deps.warehouse.dropNativeExportViews(p.sanitizedTableName, p.exportLocation);
       await deps.propertyRepo.delete(p.id);
       propertiesDeleted++;
     }
     if (propertiesDeleted > 0) {
-      const nativeTables = await deps.propertyRepo.listNativeExportTableNames();
+      const nativeTables = await deps.propertyRepo.listNativeExportTableNames(
+        deps.warehouse.location,
+      );
       await deps.warehouse.refreshWildcardViews({
         [DATASETS.byProperty]: nativeTables,
         [DATASETS.byPage]: nativeTables,
