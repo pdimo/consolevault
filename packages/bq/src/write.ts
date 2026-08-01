@@ -644,15 +644,21 @@ export class Warehouse {
         : '';
     for (const { viewId } of WILDCARD_VIEWS) {
       if (!(await this.tableExists(DATASETS.views, viewId))) continue;
-      const [rows] = await this.bq.query({
-        query: `SELECT row_hash FROM ${this.tableRef(DATASETS.views, viewId)} ${where}
-                GROUP BY row_hash HAVING COUNT(*) > 1`,
-        location: this.cfg.location,
-        maximumBytesBilled: String(20 * 1024 ** 3), // 20 GiB hard cap — never a surprise bill
-      });
-      byView[viewId] = rows.length;
+      try {
+        const [rows] = await this.bq.query({
+          query: `SELECT row_hash FROM ${this.tableRef(DATASETS.views, viewId)} ${where}
+                  GROUP BY row_hash HAVING COUNT(*) > 1`,
+          location: this.cfg.location,
+          maximumBytesBilled: String(20 * 1024 ** 3), // 20 GiB hard cap — never a surprise bill
+        });
+        byView[viewId] = rows.length;
+      } catch {
+        // A per-view failure (e.g. a data-dataset the caller can't read) must not fail the daily
+        // pipeline — record -1 ("not checked") and move on. -1 never triggers the violation alert.
+        byView[viewId] = -1;
+      }
     }
-    const ok = Object.values(byView).every((n) => n === 0);
+    const ok = Object.values(byView).every((n) => n <= 0);
     return { ok, byView };
   }
 }

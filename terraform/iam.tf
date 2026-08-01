@@ -133,6 +133,15 @@ resource "google_bigquery_dataset_iam_member" "workflows_byproperty_viewer" {
   member     = "serviceAccount:${google_service_account.workflows.email}"
 }
 
+# Orchestrator runs the daily dedup invariant across the wildcard _all views (SPEC §9), which read
+# gsc_totals too — so it needs read on totals (it already has byProperty/byPage via viewer/editor).
+resource "google_bigquery_dataset_iam_member" "workflows_totals_viewer" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.datasets["gsc_totals"].dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${google_service_account.workflows.email}"
+}
+
 # Native Bulk Export adapter views (SPEC §12) live at gsc_byProperty.<name> / gsc_byPage.<name> so
 # they drop into the reporting layer. Creating/replacing a VIEW needs dataEditor on the host
 # dataset. Both the API (synchronous "Connect a BigQuery export" flow) and the orchestrator (daily
