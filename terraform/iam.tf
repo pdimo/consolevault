@@ -39,8 +39,12 @@ locals {
       "roles/datastore.user",
       "roles/secretmanager.admin",
       # bigquery.user = jobUser + datasets.create: create region-local landing datasets for
-      # cross-region native exports (SPEC §12). Data reads are still dataset-scoped (viewer bindings).
+      # cross-region native exports (SPEC §12).
       "roles/bigquery.user",
+      # dataViewer (project): read the runtime-created native landing datasets (whose owner is
+      # whichever app SA created them) + the managed datasets. Reads of client export data are still
+      # gated by the client's per-dataset grant.
+      "roles/bigquery.dataViewer",
       "roles/workflows.invoker",
       "roles/workflows.viewer",
       "roles/cloudtasks.queueAdmin",
@@ -71,6 +75,8 @@ locals {
       "roles/logging.logWriter",
       # Build materialized group tables + create region-local native landing datasets (SPEC §12).
       "roles/bigquery.user",
+      # Read runtime-created landing datasets created by the other app SA (see api note).
+      "roles/bigquery.dataViewer",
     ]
   }
 
