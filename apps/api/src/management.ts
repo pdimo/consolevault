@@ -198,6 +198,17 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     for (const a of exportAccounts) {
       const ds = a.exportDataset!;
       try {
+        // Location first — a cross-location export can't be queried at all, so report that clearly
+        // rather than as a generic read failure.
+        const loc = await warehouse.getDatasetLocation(ds.projectId, ds.datasetId);
+        if (loc && loc.toUpperCase() !== warehouse.location.toUpperCase()) {
+          checks.push({
+            name: `BigQuery export: ${ds.datasetId}`,
+            ok: false,
+            detail: `dataset is in "${loc}" but ConsoleVault is in "${warehouse.location}" — BigQuery can't query across locations. Recreate the export in a "${warehouse.location}" dataset, or deploy ConsoleVault in "${loc}".`,
+          });
+          continue;
+        }
         const latest = await warehouse.latestExportDate(ds.projectId, ds.datasetId);
         checks.push({
           name: `BigQuery export: ${ds.datasetId}`,

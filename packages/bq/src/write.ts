@@ -120,6 +120,25 @@ export class Warehouse {
     return `\`${this.cfg.projectId}.${datasetId}.${tableId}\``;
   }
 
+  /** ConsoleVault's permanent BigQuery location (bq_location). */
+  get location(): string {
+    return this.cfg.location;
+  }
+
+  /**
+   * The location of a (possibly cross-project) dataset, or null if unreadable. Used to catch a
+   * native-export dataset whose location differs from ConsoleVault's — BigQuery can't query across
+   * locations, so the live adapter views (SPEC §12) require the export to be co-located.
+   */
+  async getDatasetLocation(projectId: string, datasetId: string): Promise<string | null> {
+    try {
+      const [meta] = await this.bq.dataset(datasetId, { projectId }).getMetadata();
+      return (meta as { location?: string }).location ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Per-dataset storage rollup (table count, rows, logical bytes) from each dataset's __TABLES__
    * meta-table. Cheap metadata scan — drives the Costs panel's storage estimate (SPEC §11), works

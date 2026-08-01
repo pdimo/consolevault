@@ -280,7 +280,8 @@ export default function Accounts() {
           <strong>Bulk Export</strong>? Point ConsoleVault at that dataset to get the full reporting
           layer on top of it — <strong>no API collection, no backfill limit</strong>. These
           properties are read-only imports. Leave the project blank to use this deployment&apos;s
-          project.
+          project. The export dataset must be in the <strong>same BigQuery location</strong> as this
+          deployment (BigQuery can&apos;t query across locations).
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <Field label="dataset id">

@@ -38,9 +38,12 @@ there's no collection job.
 ## Setup
 
 1. **Enable the export in Search Console** (Google's docs:
-   <https://support.google.com/webmasters/answer/12917675>). Point it at **this deployment's GCP
-   project** (cross-project export datasets are a post-v1 follow-up). The default dataset name is
-   `searchconsole`.
+   <https://support.google.com/webmasters/answer/12917675>). The dataset can be in this deployment's
+   project or another project you own (register it as `PROJECT:dataset`). **It must be in the same
+   BigQuery location as ConsoleVault** (`bq_location`) — BigQuery can't query across locations, so an
+   export in `australia-southeast1` can't be read by a `US` deployment. If they differ, recreate the
+   export in a same-location dataset, or deploy ConsoleVault in the export's location. The default
+   dataset name is `searchconsole`.
 
 2. **Grant ConsoleVault read access.** Add the dataset id to `native_export_datasets` in
    `terraform/terraform.tfvars` and re-apply:

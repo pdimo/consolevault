@@ -43,6 +43,14 @@ export async function discoverExportConnection(
     throw new Error(`Not a BigQuery-export connection: ${account.id}`);
   }
   const { projectId, datasetId } = account.exportDataset;
+  // BigQuery can't query across locations, so the live adapter views require the export dataset to
+  // sit in the same location as ConsoleVault (SPEC §12). Fail early with a clear, actionable error.
+  const exportLoc = await warehouse.getDatasetLocation(projectId, datasetId);
+  if (exportLoc && exportLoc.toUpperCase() !== warehouse.location.toUpperCase()) {
+    throw new Error(
+      `Export dataset ${projectId}.${datasetId} is in "${exportLoc}", but ConsoleVault's BigQuery location is "${warehouse.location}". BigQuery can't query across locations — the export must be in the same location. Either create the GSC export in a "${warehouse.location}" dataset, or deploy ConsoleVault in "${exportLoc}".`,
+    );
+  }
   const siteUrls = await warehouse.listExportSiteUrls(projectId, datasetId);
   const now = new Date().toISOString();
   const resolved = await propertyRepo.upsertNativeFromDiscovery(account.id, siteUrls, now);
