@@ -45,9 +45,14 @@ vi.mock('@consolevault/store', async (orig) => {
     async listByProperty() {
       return [...state.existing.values()];
     }
-    async create(t: { id: string; searchType: string; aggregation: string; dataDate: string }) {
-      state.created.push(t);
-      state.existing.set(t.id, { ...t, status: 'pending' });
+    async createMany(
+      tasks: Array<{ id: string; searchType: string; aggregation: string; dataDate: string }>,
+    ) {
+      for (const t of tasks) {
+        state.created.push(t);
+        state.existing.set(t.id, { ...t, status: 'pending' });
+      }
+      return tasks.length;
     }
   }
   return { ...actual, PropertyRepository, TaskRepository };

@@ -30,7 +30,7 @@ export async function reconcile(): Promise<{ properties: number; created: number
     (p) => p.included && p.source !== 'native_export',
   );
 
-  let created = 0;
+  const toCreate: Task[] = [];
   for (const property of properties) {
     const accountId = property.preferredAccountId ?? property.accountIds[0];
     if (!accountId) continue;
@@ -73,7 +73,7 @@ export async function reconcile(): Promise<{ properties: number; created: number
           const ex = existing.get(id);
           // Don't clobber an in-flight task (Cloud Tasks name dedup also protects double-runs).
           if (ex && (ex.status === 'pending' || ex.status === 'queued')) continue;
-          const task: Task = {
+          toCreate.push({
             id,
             propertyId: property.id,
             searchType,
@@ -82,12 +82,11 @@ export async function reconcile(): Promise<{ properties: number; created: number
             status: 'pending',
             attempts: 0,
             accountId,
-          };
-          await taskRepo.create(task);
-          created++;
+          });
         }
       }
     }
   }
+  const created = await taskRepo.createMany(toCreate);
   return { properties: properties.length, created };
 }

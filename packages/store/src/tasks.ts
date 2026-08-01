@@ -41,6 +41,25 @@ export class TaskRepository {
     await this.col().doc(task.id).set(task);
   }
 
+  /**
+   * Bulk-create tasks with a BulkWriter (auto-batched, concurrent) instead of one round-trip each.
+   * A fresh property fans out to ~490 days × types × aggregations — serial creates blow the daily
+   * workflow's time budget at agency scale (SPEC §5). Returns the count written.
+   */
+  async createMany(tasks: Task[]): Promise<number> {
+    if (tasks.length === 0) return 0;
+    const writer = this.db.bulkWriter();
+    for (const t of tasks) void writer.set(this.col().doc(t.id), t);
+    await writer.close();
+    return tasks.length;
+  }
+
+  /** Bounded, most-recent-first task list for the Jobs view (never a full-collection scan). */
+  async listRecent(limit = 500): Promise<Task[]> {
+    const snap = await this.col().orderBy('__name__').limit(limit).get();
+    return snap.docs.map((d) => d.data() as Task);
+  }
+
   async get(id: string): Promise<Task | undefined> {
     const doc = await this.col().doc(id).get();
     return doc.exists ? (doc.data() as Task) : undefined;
@@ -73,11 +92,14 @@ export class TaskRepository {
   /** Reset all terminal `error` tasks back to `pending` so the next run re-collects them. */
   async requeueErrors(): Promise<number> {
     const errors = await this.listByStatus('error');
-    await Promise.all(
-      errors.map((t) =>
-        this.col().doc(t.id).set({ status: 'pending', attempts: 0 }, { merge: true }),
-      ),
-    );
+    if (errors.length === 0) return 0;
+    // BulkWriter auto-batches + bounds concurrency — an unbounded Promise.all over every error task
+    // can exhaust sockets / trip Firestore write limits when a backfill dead-lettered thousands.
+    const writer = this.db.bulkWriter();
+    for (const t of errors) {
+      void writer.set(this.col().doc(t.id), { status: 'pending', attempts: 0 }, { merge: true });
+    }
+    await writer.close();
     return errors.length;
   }
 

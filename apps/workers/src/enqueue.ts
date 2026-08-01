@@ -63,6 +63,7 @@ async function ensureQueue(accountId: string): Promise<string> {
 export async function enqueueAll(): Promise<{
   enqueued: number;
   deduped: number;
+  failed: number;
   accounts: number;
 }> {
   const collectorUrl = process.env.COLLECTOR_URL;
@@ -85,6 +86,7 @@ export async function enqueueAll(): Promise<{
 
   let enqueued = 0;
   let deduped = 0;
+  let failed = 0;
   for (const [accountId, tasks] of byAccount) {
     const queuePath = await ensureQueue(accountId);
     for (const t of tasks) {
@@ -117,10 +119,12 @@ export async function enqueueAll(): Promise<{
           await taskRepo.markQueued(t.id);
           deduped++;
         } else {
-          throw err;
+          // One task failing to enqueue must not abandon the rest of the run — it stays `pending`
+          // and the next reconcile/enqueue retries it (idempotent by task name). Count and continue.
+          failed++;
         }
       }
     }
   }
-  return { enqueued, deduped, accounts: byAccount.size };
+  return { enqueued, deduped, failed, accounts: byAccount.size };
 }

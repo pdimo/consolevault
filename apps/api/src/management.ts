@@ -272,10 +272,15 @@ export function registerManagementRoutes(app: FastifyInstance): void {
 
   // --- Jobs / tasks (Firestore) ---
   app.get('/api/tasks', async (req) => {
-    const { status, propertyId } = req.query as { status?: Task['status']; propertyId?: string };
+    const { status, propertyId, limit } = req.query as {
+      status?: Task['status'];
+      propertyId?: string;
+      limit?: string;
+    };
     if (status) return taskRepo.listByStatus(status);
     if (propertyId) return taskRepo.listByProperty(propertyId);
-    return taskRepo.list();
+    // No filter → a bounded page, never the whole tasks collection (can be hundreds of thousands).
+    return taskRepo.listRecent(Math.min(Number(limit) || 500, 2000));
   });
 
   // --- Logs (task_logs.attempts, searchable by property) ---
