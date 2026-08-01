@@ -18,6 +18,11 @@ export async function authClientForAccount(
   account: Account,
   secretStore: SecretStore,
 ): Promise<AuthClient> {
+  // BigQuery-export connections (SPEC §12) are not GSC-API accounts — they have no OAuth/SA
+  // credentials. Callers must skip them; this guard makes a stray call fail clearly.
+  if (account.type === 'bigquery_export') {
+    throw new Error('BigQuery-export connections have no GSC credentials (read-only import).');
+  }
   if (account.type === 'oauth') {
     // Refresh with the client that minted the token (Desktop helper vs in-UI web flow).
     const clientSecretId = account.oauthClientSecretId ?? SECRET_IDS.oauthClientConfig;

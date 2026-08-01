@@ -83,7 +83,7 @@ variable "default_partition_expiry_days" {
 
 variable "native_export_datasets" {
   type        = list(string)
-  description = "GSC native Bulk Export dataset ids IN THIS PROJECT to grant the API/orchestrator read access to (SPEC §12 — 'Connect a BigQuery export'). Add each export dataset here (e.g. [\"searchconsole\"]) so ConsoleVault can read it and build adapter views. Cross-project export datasets are a post-v1 follow-up."
+  description = "GSC native Bulk Export datasets to grant the API/orchestrator read access to (SPEC §12 — 'Connect a BigQuery export'). Each entry is a dataset id in THIS project (e.g. \"searchconsole\") or a cross-project dataset as \"PROJECT:dataset\" (e.g. \"my-exports-project:searchconsole\"). ConsoleVault reads it and builds adapter views. The deployer's identity must be able to set IAM on the (cross-)project's dataset."
   default     = []
 }
 

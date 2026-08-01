@@ -84,11 +84,18 @@ export default function Accounts() {
   };
 
   const remove = async (a: Account) => {
+    const n = a.propertyCount ?? 0;
+    const props = `${n} propert${n === 1 ? 'y' : 'ies'}`;
+    const message =
+      a.type === 'bigquery_export'
+        ? `This connection imports ${props}. Removing it deletes those properties and their reports (the underlying BigQuery export dataset is untouched).`
+        : n > 0
+          ? `This account reaches ${props}. Its credentials, task queue, and pending jobs are deleted; collected data in BigQuery is kept. Any property only reachable by this account will stop collecting.`
+          : 'Its stored credentials, task queue, and pending jobs are deleted. Collected data in BigQuery is kept.';
     if (
       await confirm({
         title: `Remove ${a.displayName}?`,
-        message:
-          'Its stored credentials, task queue, and pending jobs are deleted. Collected data in BigQuery is kept.',
+        message,
         confirmLabel: 'Remove',
         danger: true,
       })
@@ -131,6 +138,7 @@ export default function Accounts() {
               <Th>Name</Th>
               <Th>Type</Th>
               <Th>Email</Th>
+              <Th className="text-center">Properties</Th>
               <Th>Token health</Th>
               <Th>Last success</Th>
               <Th className="text-right">Actions</Th>
@@ -153,6 +161,7 @@ export default function Accounts() {
                       ? `${a.exportDataset.projectId}.${a.exportDataset.datasetId}`
                       : '—')}
                 </Td>
+                <Td className="text-center tabular-nums">{a.propertyCount ?? 0}</Td>
                 <Td>
                   {a.type === 'bigquery_export' ? (
                     <Badge tone="ok">import</Badge>

@@ -167,18 +167,26 @@ resource "google_bigquery_dataset_iam_member" "native_view_editors" {
 # Read access to each configured native-export dataset (SPEC §12). The datasets are created by
 # Google's export (not Terraform), so they're referenced by id; list them in native_export_datasets.
 locals {
-  native_export_readers = merge([
+  # Each entry is "dataset" (this project) or "PROJECT:dataset" (cross-project export, SPEC §12).
+  native_export_parsed = [
     for ds in var.native_export_datasets : {
-      "api:${ds}"       = { sa = google_service_account.api.email, ds = ds }
-      "workflows:${ds}" = { sa = google_service_account.workflows.email, ds = ds }
+      raw     = ds
+      project = length(split(":", ds)) > 1 ? split(":", ds)[0] : var.project_id
+      dataset = length(split(":", ds)) > 1 ? split(":", ds)[1] : ds
+    }
+  ]
+  native_export_readers = merge([
+    for e in local.native_export_parsed : {
+      "api:${e.raw}"       = { sa = google_service_account.api.email, project = e.project, dataset = e.dataset }
+      "workflows:${e.raw}" = { sa = google_service_account.workflows.email, project = e.project, dataset = e.dataset }
     }
   ]...)
 }
 
 resource "google_bigquery_dataset_iam_member" "native_export_readers" {
   for_each   = local.native_export_readers
-  project    = var.project_id
-  dataset_id = each.value.ds
+  project    = each.value.project
+  dataset_id = each.value.dataset
   role       = "roles/bigquery.dataViewer"
   member     = "serviceAccount:${each.value.sa}"
 }

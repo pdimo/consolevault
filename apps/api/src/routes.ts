@@ -22,7 +22,16 @@ interface IdParams {
 }
 
 export function registerApiRoutes(app: FastifyInstance): void {
-  app.get('/api/accounts', async () => accountRepo.list());
+  // Accounts enriched with a live property count (how many properties each connection reaches) so
+  // the UI can warn what a removal affects. For bigquery_export the count is its imported properties.
+  app.get('/api/accounts', async () => {
+    const [accounts, properties] = await Promise.all([accountRepo.list(), propertyRepo.list()]);
+    const counts = new Map<string, number>();
+    for (const p of properties) {
+      for (const aid of p.accountIds) counts.set(aid, (counts.get(aid) ?? 0) + 1);
+    }
+    return accounts.map((a) => ({ ...a, propertyCount: counts.get(a.id) ?? 0 }));
+  });
 
   // Register a service-account account (impersonation). OAuth accounts are added by the
   // local helper (they need a browser/loopback), not via this deployed API.

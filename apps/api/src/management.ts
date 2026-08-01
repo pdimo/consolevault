@@ -118,14 +118,25 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       });
     }
 
-    const probe = accounts.find((a) => a.tokenHealth === 'valid') ?? accounts[0];
-    try {
-      if (!probe) throw new Error('no account');
-      const auth = await authClientForAccount(probe, secretStore);
-      const sites = await listSites(auth);
-      checks.push({ name: 'GSC test query', ok: true, detail: `${sites.length} sites visible` });
-    } catch (err) {
-      checks.push({ name: 'GSC test query', ok: false, detail: errMsg(err) });
+    // Only OAuth/service-account connections can run a GSC test query — bigquery_export connections
+    // are read-only imports with no credentials (SPEC §12), so exclude them from the probe.
+    const gscAccounts = accounts.filter((a) => a.type !== 'bigquery_export');
+    const probe = gscAccounts.find((a) => a.tokenHealth === 'valid') ?? gscAccounts[0];
+    if (gscAccounts.length === 0) {
+      checks.push({
+        name: 'GSC test query',
+        ok: true,
+        detail: 'no Google accounts to test (skipped)',
+      });
+    } else {
+      try {
+        if (!probe) throw new Error('no account');
+        const auth = await authClientForAccount(probe, secretStore);
+        const sites = await listSites(auth);
+        checks.push({ name: 'GSC test query', ok: true, detail: `${sites.length} sites visible` });
+      } catch (err) {
+        checks.push({ name: 'GSC test query', ok: false, detail: errMsg(err) });
+      }
     }
 
     try {

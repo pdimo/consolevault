@@ -19,6 +19,9 @@ export async function tokenHealthSweep(
   let unhealthy = 0;
 
   for (const account of accounts) {
+    // BigQuery-export connections have no GSC token to sweep (SPEC §12) — skip so they don't get
+    // flagged unhealthy and trip a false token-health alert.
+    if (account.type === 'bigquery_export') continue;
     let health: TokenHealth;
     try {
       const client = await authClientForAccount(account, secretStore);
