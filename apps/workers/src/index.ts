@@ -9,6 +9,7 @@ import Fastify from 'fastify';
 import { loadConfig } from '@consolevault/config';
 import { CollectionError } from '@consolevault/gsc';
 import { discoverAllAccounts, SecretStore } from '@consolevault/store';
+import { Warehouse } from '@consolevault/bq';
 import { collectTask, type CollectInput } from './collector.js';
 import { reconcile } from './planner.js';
 import { enqueueAll } from './enqueue.js';
@@ -19,6 +20,11 @@ import { refreshDashboards } from './dashboards.js';
 const app = Fastify({ logger: true });
 const config = loadConfig();
 const secretStore = new SecretStore(config.projectId);
+const warehouse = new Warehouse({
+  projectId: config.projectId,
+  location: config.bqLocation,
+  stagingBucket: config.stagingBucket ?? '',
+});
 
 app.get('/health', async () => ({ status: 'ok', service: 'consolevault-workers', stage: 3 }));
 
@@ -52,12 +58,23 @@ app.post('/collect', async (req, reply) => {
 });
 
 // --- orchestrator (sa-workflows), called by the daily Workflow ---
-app.post('/discover-all', async () => discoverAllAccounts(secretStore));
+// Pass the warehouse so native Bulk Export connections are (re)discovered daily (SPEC §12).
+app.post('/discover-all', async () => discoverAllAccounts(secretStore, warehouse));
 app.post('/reconcile', async () => reconcile());
 app.post('/enqueue', async () => enqueueAll());
 app.post('/token-health-sweep', async () => tokenHealthSweep(secretStore, app.log));
 app.post('/refresh-materialized', async () => refreshMaterialized());
 app.post('/refresh-dashboards', async () => refreshDashboards());
+
+// Standing dedup invariant (SPEC §9). Bounded to recent days so the daily scan is cheap; a
+// violation logs the `dedup_violation` marker that the Monitoring alert watches.
+app.post('/dedup-check', async () => {
+  const result = await warehouse.checkRowHashInvariant(7);
+  if (!result.ok) {
+    app.log.error({ alert: 'dedup_violation', byView: result.byView }, 'dedup invariant violated');
+  }
+  return result;
+});
 
 const port = Number(process.env.PORT ?? 8080);
 

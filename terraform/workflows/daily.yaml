@@ -44,6 +44,14 @@ main:
           auth:
             type: OIDC
         result: dashboards_result
+    - dedup_check:
+        call: http.post
+        args:
+          url: __ORCHESTRATOR_URL__/dedup-check
+          timeout: 1800
+          auth:
+            type: OIDC
+        result: dedup_result
     - done:
         return:
           discover: ${discover_result.body}
@@ -51,3 +59,4 @@ main:
           enqueue: ${enqueue_result.body}
           materialized: ${materialized_result.body}
           dashboards: ${dashboards_result.body}
+          dedup: ${dedup_result.body}

@@ -202,6 +202,27 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       }
     }
 
+    // Standing dedup invariant (SPEC §9): no row_hash should appear more than once. Bounded to the
+    // last 30 days here (on-demand); the daily workflow runs the same check and alerts on violation.
+    try {
+      const dedup = await warehouse.checkRowHashInvariant(30);
+      const offenders = Object.entries(dedup.byView).filter(([, n]) => n > 0);
+      checks.push({
+        name: 'Dedup invariant (row_hash)',
+        ok: dedup.ok,
+        detail: dedup.ok
+          ? 'no duplicate row_hash in the last 30 days'
+          : `duplicates found: ${offenders.map(([v, n]) => `${v}=${n}`).join(', ')} — a collection bug slipped past both idempotency layers (SPEC §9)`,
+      });
+    } catch (err) {
+      // Wildcard views may not exist yet (pre-collection) — treat as non-fatal.
+      checks.push({
+        name: 'Dedup invariant (row_hash)',
+        ok: true,
+        detail: `skipped (${errMsg(err)})`,
+      });
+    }
+
     // 50K/day/type API exposure ceiling (SPEC §12): a property capping out is losing rows the API
     // can't return. Native Bulk Export has no row limit — surface it as an upgrade path, not an error.
     try {

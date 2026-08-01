@@ -36,6 +36,18 @@ resource "google_logging_metric" "collected" {
   }
 }
 
+# Standing dedup invariant (SPEC §9): the daily /dedup-check step logs this marker if any row_hash
+# appears more than once — a duplication bug slipping past both idempotency layers.
+resource "google_logging_metric" "dedup_violation" {
+  project = var.project_id
+  name    = "${var.app_name}_dedup_violation"
+  filter  = "resource.type=\"cloud_run_revision\" AND jsonPayload.alert=\"dedup_violation\""
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+  }
+}
+
 resource "google_monitoring_alert_policy" "token_health" {
   project      = var.project_id
   display_name = "ConsoleVault: account token unhealthy"
@@ -84,6 +96,31 @@ resource "google_monitoring_alert_policy" "collector_error" {
     ignore_changes = [notification_channels]
   }
   depends_on = [google_logging_metric.collector_error]
+}
+
+resource "google_monitoring_alert_policy" "dedup_violation" {
+  project      = var.project_id
+  display_name = "ConsoleVault: duplicate row_hash detected (dedup invariant)"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "dedup invariant violated"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${var.app_name}_dedup_violation\" AND resource.type=\"cloud_run_revision\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period   = "3600s"
+        per_series_aligner = "ALIGN_DELTA"
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [notification_channels]
+  }
+  depends_on = [google_logging_metric.dedup_violation]
 }
 
 resource "google_monitoring_alert_policy" "no_collection" {

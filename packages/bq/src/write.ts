@@ -615,7 +615,7 @@ export class Warehouse {
     });
   }
 
-  /** Standing invariant (SPEC §9): no row_hash appears more than once. */
+  /** Standing invariant (SPEC §9): no row_hash appears more than once in one table. */
   async assertNoDuplicateRowHashes(
     datasetId: string,
     tableId: string,
@@ -625,5 +625,34 @@ export class Warehouse {
       location: this.cfg.location,
     });
     return { ok: rows.length === 0, duplicates: rows.length };
+  }
+
+  /**
+   * Standing dedup invariant across the whole warehouse (SPEC §9): scan each cross-property wildcard
+   * view for any row_hash occurring more than once. `sinceDays` bounds the scan to recent days (a
+   * dedup failure shows up on freshly-written days) so the daily check stays cheap; a hard
+   * `maximumBytesBilled` cap makes a runaway impossible. Missing views (fresh install) are skipped.
+   * Returns per-view duplicate counts and an overall `ok`.
+   */
+  async checkRowHashInvariant(
+    sinceDays?: number,
+  ): Promise<{ ok: boolean; byView: Record<string, number> }> {
+    const byView: Record<string, number> = {};
+    const where =
+      sinceDays && sinceDays > 0
+        ? `WHERE data_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${Math.floor(sinceDays)} DAY)`
+        : '';
+    for (const { viewId } of WILDCARD_VIEWS) {
+      if (!(await this.tableExists(DATASETS.views, viewId))) continue;
+      const [rows] = await this.bq.query({
+        query: `SELECT row_hash FROM ${this.tableRef(DATASETS.views, viewId)} ${where}
+                GROUP BY row_hash HAVING COUNT(*) > 1`,
+        location: this.cfg.location,
+        maximumBytesBilled: String(20 * 1024 ** 3), // 20 GiB hard cap — never a surprise bill
+      });
+      byView[viewId] = rows.length;
+    }
+    const ok = Object.values(byView).every((n) => n === 0);
+    return { ok, byView };
   }
 }
