@@ -10,6 +10,22 @@ for the full design (source of truth).
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloneRepo=https://github.com/pdimo/consolevault.git&cloudshell_tutorial=.cloudshell/tutorial.md)
 
+![ConsoleVault client report — KPIs, clicks-over-time, brand vs non-brand](./docs/images/client-report.png)
+
+## Screenshots
+
+|                                                                                               |                                                                                      |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Coverage heatmap** — provable per-cell completeness across 16 months                        | **Opportunities** — striking distance, CTR benchmark, cannibalization, decay         |
+| [![Coverage heatmap](./docs/images/coverage-heatmap.png)](./docs/images/coverage-heatmap.png) | [![Opportunities](./docs/images/opportunities.png)](./docs/images/opportunities.png) |
+
+**Connect a native BigQuery Bulk Export** and get the full reporting layer with no API collection
+([details](./docs/NATIVE-EXPORT.md)):
+
+![Connect a BigQuery export](./docs/images/connect-bigquery-export.png)
+
+_(Screenshots use the built-in **Sample data** demo client — no real data.)_
+
 ## Why self-deploy (the OAuth / CASA advantage)
 
 `https://www.googleapis.com/auth/webmasters.readonly` is a **sensitive** scope. A central hosted
@@ -136,6 +152,13 @@ terraform/  The only deploy mechanism (GCS backend + state locking)
 pnpm install
 pnpm typecheck && pnpm lint && pnpm build && pnpm test
 ```
+
+## Contributing & community
+
+- **[Contributing guide](./CONTRIBUTING.md)** — how to build, test, and open a PR.
+- **[Security policy](./SECURITY.md)** — report a vulnerability privately (please don't open a
+  public issue for security problems).
+- **[Code of Conduct](./CODE_OF_CONDUCT.md)** — expected behaviour in community spaces.
 
 ## License
 
