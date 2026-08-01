@@ -150,6 +150,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, name }),
     }),
+  addBigQueryExport: (input: { name?: string; projectId?: string; datasetId?: string }) =>
+    http<Account>('/api/accounts/bigquery-export', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   discover: (id: string) =>
     http<{ count: number }>(`/api/accounts/${id}/discover`, { method: 'POST' }),
   checkHealth: (id: string) =>

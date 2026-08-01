@@ -11,6 +11,12 @@ import type { TableMetadata } from '@google-cloud/bigquery';
 import { Storage } from '@google-cloud/storage';
 import { DATASETS, GSC_ROW_SCHEMA, type BqField } from './schema.js';
 import { buildWildcardViewSql, WILDCARD_VIEWS } from './views.js';
+import {
+  buildNativeByPageViewSql,
+  buildNativeByPropertyViewSql,
+  distinctExportSiteUrlsSql,
+  latestExportDateSql,
+} from './native-export.js';
 
 export interface WarehouseConfig {
   projectId: string;
@@ -387,16 +393,84 @@ export class Warehouse {
     await this.createOrReplaceView(viewId, buildWildcardViewSql(this.cfg.projectId, dataset));
   }
 
-  /** (Re)create all wildcard views over datasets that have ≥1 table. Used for initial/manual refresh. */
-  async refreshWildcardViews(): Promise<string[]> {
+  /**
+   * (Re)create all wildcard views over datasets that have ≥1 table (or ≥1 native-export view).
+   * `nativeByDataset` maps a data dataset → the sanitized names of its native-export adapter views,
+   * which are UNION'd in explicitly (wildcards skip views — SPEC §12). Used for initial/manual
+   * refresh and after native-export discovery.
+   */
+  async refreshWildcardViews(
+    nativeByDataset: Partial<Record<string, readonly string[]>> = {},
+  ): Promise<string[]> {
     const created: string[] = [];
     for (const { dataset, viewId } of WILDCARD_VIEWS) {
+      const native = nativeByDataset[dataset] ?? [];
+      const nativeSet = new Set(native);
       const [tables] = await this.bq.dataset(dataset).getTables();
-      if (!tables.some((t) => t.id && !t.id.startsWith('_'))) continue;
-      await this.createOrReplaceView(viewId, buildWildcardViewSql(this.cfg.projectId, dataset));
+      const hasApiTables = tables.some(
+        (t) => t.id && !t.id.startsWith('_') && !nativeSet.has(t.id),
+      );
+      if (!hasApiTables && native.length === 0) continue;
+      await this.createOrReplaceView(
+        viewId,
+        buildWildcardViewSql(this.cfg.projectId, dataset, native, hasApiTables),
+      );
       created.push(viewId);
     }
     return created;
+  }
+
+  /**
+   * Provision (or replace) the two adapter views for a native-export property (SPEC §12): a
+   * `byProperty` view at `gsc_byProperty.<sanitizedTableName>` and a `byPage` view at
+   * `gsc_byPage.<sanitizedTableName>`, each mapping the native export tables into the shared row
+   * schema. After this, the property is a drop-in for the whole reporting layer.
+   */
+  async provisionNativeExportViews(
+    sanitizedTableName: string,
+    exportProjectId: string,
+    exportDatasetId: string,
+    siteUrl: string,
+  ): Promise<void> {
+    await this.createOrReplaceViewIn(
+      DATASETS.byProperty,
+      sanitizedTableName,
+      buildNativeByPropertyViewSql(exportProjectId, exportDatasetId, siteUrl),
+    );
+    await this.createOrReplaceViewIn(
+      DATASETS.byPage,
+      sanitizedTableName,
+      buildNativeByPageViewSql(exportProjectId, exportDatasetId, siteUrl),
+    );
+  }
+
+  /** Remove a native-export property's adapter views (connection/property removal). */
+  async dropNativeExportViews(sanitizedTableName: string): Promise<void> {
+    await this.dropViewIn(DATASETS.byProperty, sanitizedTableName);
+    await this.dropViewIn(DATASETS.byPage, sanitizedTableName);
+  }
+
+  /** Distinct site_urls in a native-export dataset — the property list for discovery (SPEC §12). */
+  async listExportSiteUrls(exportProjectId: string, exportDatasetId: string): Promise<string[]> {
+    const [rows] = await this.bq.query({
+      query: distinctExportSiteUrlsSql(exportProjectId, exportDatasetId),
+      location: this.cfg.location,
+    });
+    return (rows as Array<{ site_url?: string }>)
+      .map((r) => r.site_url)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+  }
+
+  /** Most recent exported day (ExportLog) — freshness for the UI/Doctor. Null if unavailable. */
+  async latestExportDate(exportProjectId: string, exportDatasetId: string): Promise<string | null> {
+    const [rows] = await this.bq.query({
+      query: latestExportDateSql(exportProjectId, exportDatasetId),
+      location: this.cfg.location,
+    });
+    const r = (rows[0] ?? {}) as { latest?: { value?: string } | string | null };
+    const v = r.latest;
+    if (v == null) return null;
+    return typeof v === 'string' ? v : (v.value ?? null);
   }
 
   /** Write rows as NDJSON to the staging bucket; returns the object path. */
@@ -492,8 +566,21 @@ export class Warehouse {
 
   /** Create or replace a view in the gsc_views dataset (property-group union views, SPEC §6.4). */
   async createOrReplaceView(viewId: string, selectSql: string): Promise<void> {
+    await this.createOrReplaceViewIn(DATASETS.views, viewId, selectSql);
+  }
+
+  /** Create or replace a view in an arbitrary dataset (native-export adapter views, SPEC §12). */
+  async createOrReplaceViewIn(datasetId: string, viewId: string, selectSql: string): Promise<void> {
     await this.bq.query({
-      query: `CREATE OR REPLACE VIEW \`${this.cfg.projectId}.${DATASETS.views}.${viewId}\` AS ${selectSql}`,
+      query: `CREATE OR REPLACE VIEW \`${this.cfg.projectId}.${datasetId}.${viewId}\` AS ${selectSql}`,
+      location: this.cfg.location,
+    });
+  }
+
+  /** Drop a view in an arbitrary dataset if it exists. */
+  async dropViewIn(datasetId: string, viewId: string): Promise<void> {
+    await this.bq.query({
+      query: `DROP VIEW IF EXISTS \`${this.cfg.projectId}.${datasetId}.${viewId}\``,
       location: this.cfg.location,
     });
   }

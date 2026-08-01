@@ -1,6 +1,6 @@
 import type { Property } from '@consolevault/types';
 
-export type StatusKind = 'error' | 'final' | 'fresh' | 'collecting' | 'untracked';
+export type StatusKind = 'error' | 'final' | 'fresh' | 'collecting' | 'untracked' | 'imported';
 export type StatusTone = 'ok' | 'warn' | 'bad' | 'fresh' | 'neutral';
 
 export interface DerivedStatus {
@@ -16,6 +16,11 @@ export interface DerivedStatus {
  * successful collection (a later success supersedes it).
  */
 export function propertyStatus(p: Property): DerivedStatus {
+  // Native Bulk Export imports aren't collected — data lands via Google's export, read through
+  // adapter views (SPEC §12). Show a distinct, always-current chip rather than collection state.
+  if (p.source === 'native_export') {
+    return { kind: 'imported', label: 'BigQuery export', tone: 'ok' };
+  }
   const s = p.status;
   const erroredAfterCollect =
     s?.lastErrorAt && (!s.lastCollectedAt || s.lastErrorAt > s.lastCollectedAt);

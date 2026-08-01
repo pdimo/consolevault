@@ -40,6 +40,15 @@ function optional(env: NodeJS.ProcessEnv, key: string): string | undefined {
 }
 
 /**
+ * Cloud Tasks queue id for an account (one queue per account, SPEC §5.3). Shared by the enqueue
+ * worker (which creates it) and the API (which deletes it on account removal) so both agree on the
+ * name. Capped at Cloud Tasks' 100-char queue-id limit.
+ */
+export function accountQueueId(accountId: string): string {
+  return `cv-acct-${accountId}`.slice(0, 100);
+}
+
+/**
  * Load and validate {@link AppConfig} from the given environment (defaults to `process.env`).
  * Throws {@link MissingConfigError} if a required variable is absent.
  */

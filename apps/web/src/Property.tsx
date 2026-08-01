@@ -168,94 +168,110 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
         title="Configuration"
         actions={
           <div className="flex gap-2">
-            <Button loading={running} onClick={() => void runPipeline()}>
-              Run collection (all clients)
-            </Button>
+            {property.source !== 'native_export' && (
+              <Button loading={running} onClick={() => void runPipeline()}>
+                Run collection (all clients)
+              </Button>
+            )}
             <Button variant="primary" loading={saving} onClick={() => void save()}>
               Save
             </Button>
           </div>
         }
       >
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-accent"
-            checked={included}
-            onChange={(e) => setIncluded(e.target.checked)}
-          />
-          Track this property (include in collection)
-        </label>
-
-        <div className="mt-5">
-          <p className="mb-2 text-sm font-semibold">Search types</p>
-          <div className="flex flex-wrap gap-2">
-            {ALL_TYPES.map((t) => (
-              <Chip
-                key={t}
-                on={config.types.includes(t)}
-                onClick={() => setConfig({ ...config, types: toggleIn(config.types, t) })}
-              >
-                {t}
-              </Chip>
-            ))}
+        {property.source === 'native_export' ? (
+          <div className="rounded-lg border border-line bg-surface-2/50 p-3 text-sm text-muted">
+            This property is imported from a <strong>BigQuery export</strong> (Google&apos;s native
+            Bulk Export) and is <strong>not collected</strong> by ConsoleVault. Search types,
+            aggregations and backfill are managed by Google&apos;s export — there&apos;s nothing to
+            configure here. Reporting reads it live through adapter views. Brand terms below still
+            apply (they&apos;re used at query time).
           </div>
-        </div>
+        ) : (
+          <>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-accent"
+                checked={included}
+                onChange={(e) => setIncluded(e.target.checked)}
+              />
+              Track this property (include in collection)
+            </label>
 
-        <div className="mt-5">
-          <p className="mb-2 text-sm font-semibold">Aggregations</p>
-          <div className="flex flex-wrap gap-2">
-            {ALL_AGGS.map((a) => (
-              <Chip
-                key={a}
-                on={config.aggregations.includes(a)}
-                onClick={() =>
-                  setConfig({ ...config, aggregations: toggleIn(config.aggregations, a) })
-                }
-              >
-                {a}
-              </Chip>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            Discover &amp; Google News support <code>byPage</code> only — their{' '}
-            <code>byProperty</code>/<code>totals</code> cells are skipped automatically.
-          </p>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-4">
-          <Field label="Offset days">
-            <TextInput
-              type="number"
-              className="w-28"
-              value={config.offsetDays}
-              onChange={(e) => setConfig({ ...config, offsetDays: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Backfill months">
-            <TextInput
-              type="number"
-              className="w-28"
-              value={config.backfillMonths}
-              onChange={(e) => setConfig({ ...config, backfillMonths: Number(e.target.value) })}
-            />
-          </Field>
-          {property.accountIds.length > 1 && (
-            <Field label="Preferred account">
-              <select
-                className="rounded-lg border border-line bg-surface px-3 py-2 text-sm"
-                value={property.preferredAccountId ?? property.accountIds[0]}
-                onChange={(e) => void api.patchProperty(id, { preferredAccountId: e.target.value })}
-              >
-                {property.accountIds.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
+            <div className="mt-5">
+              <p className="mb-2 text-sm font-semibold">Search types</p>
+              <div className="flex flex-wrap gap-2">
+                {ALL_TYPES.map((t) => (
+                  <Chip
+                    key={t}
+                    on={config.types.includes(t)}
+                    onClick={() => setConfig({ ...config, types: toggleIn(config.types, t) })}
+                  >
+                    {t}
+                  </Chip>
                 ))}
-              </select>
-            </Field>
-          )}
-        </div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <p className="mb-2 text-sm font-semibold">Aggregations</p>
+              <div className="flex flex-wrap gap-2">
+                {ALL_AGGS.map((a) => (
+                  <Chip
+                    key={a}
+                    on={config.aggregations.includes(a)}
+                    onClick={() =>
+                      setConfig({ ...config, aggregations: toggleIn(config.aggregations, a) })
+                    }
+                  >
+                    {a}
+                  </Chip>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Discover &amp; Google News support <code>byPage</code> only — their{' '}
+                <code>byProperty</code>/<code>totals</code> cells are skipped automatically.
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-4">
+              <Field label="Offset days">
+                <TextInput
+                  type="number"
+                  className="w-28"
+                  value={config.offsetDays}
+                  onChange={(e) => setConfig({ ...config, offsetDays: Number(e.target.value) })}
+                />
+              </Field>
+              <Field label="Backfill months">
+                <TextInput
+                  type="number"
+                  className="w-28"
+                  value={config.backfillMonths}
+                  onChange={(e) => setConfig({ ...config, backfillMonths: Number(e.target.value) })}
+                />
+              </Field>
+              {property.accountIds.length > 1 && (
+                <Field label="Preferred account">
+                  <select
+                    className="rounded-lg border border-line bg-surface px-3 py-2 text-sm"
+                    value={property.preferredAccountId ?? property.accountIds[0]}
+                    onChange={(e) =>
+                      void api.patchProperty(id, { preferredAccountId: e.target.value })
+                    }
+                  >
+                    {property.accountIds.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="mt-5">
           <p className="mb-1 text-sm font-semibold">Brand terms</p>
@@ -287,12 +303,14 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
 
-        <p className="mt-4 text-xs text-muted">
-          Collection runs daily at 09:00 Pacific. Track a property and save, then wait for the daily
-          run or click <strong>Run collection (all clients)</strong> to backfill now. Recent days
-          are collected as <strong>fresh</strong> and re-collected automatically until Google
-          finalizes them — no look-back setting needed.
-        </p>
+        {property.source !== 'native_export' && (
+          <p className="mt-4 text-xs text-muted">
+            Collection runs daily at 09:00 Pacific. Track a property and save, then wait for the
+            daily run or click <strong>Run collection (all clients)</strong> to backfill now. Recent
+            days are collected as <strong>fresh</strong> and re-collected automatically until Google
+            finalizes them — no look-back setting needed.
+          </p>
+        )}
       </Card>
     </div>
   );

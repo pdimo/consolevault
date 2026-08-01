@@ -62,4 +62,20 @@ export class SecretStore {
     }
     return Buffer.from(data as Uint8Array).toString('utf8');
   }
+
+  /**
+   * Destroy a secret (all versions). Idempotent — a missing secret is treated as already gone, so
+   * account-deletion cleanup can be retried safely. Used when an account is removed (CLAUDE.md hard
+   * rule 1: credentials must not outlive the account that owns them). Returns true if a secret was
+   * actually deleted, false if it was already absent.
+   */
+  async deleteSecret(secretId: string): Promise<boolean> {
+    try {
+      await this.client.deleteSecret({ name: this.secretName(secretId) });
+      return true;
+    } catch (err) {
+      if ((err as { code?: number }).code !== 5) throw err; // gRPC NOT_FOUND — already gone
+      return false;
+    }
+  }
 }

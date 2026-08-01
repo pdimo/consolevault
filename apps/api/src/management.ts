@@ -181,6 +181,47 @@ export function registerManagementRoutes(app: FastifyInstance): void {
       checks.push({ name: 'Table-name collisions', ok: false, detail: errMsg(err) });
     }
 
+    // Native Bulk Export connections (SPEC §12): confirm each export dataset is readable so a
+    // misconfigured dataset/permission surfaces here rather than as empty reports.
+    const exportAccounts = accounts.filter((a) => a.type === 'bigquery_export' && a.exportDataset);
+    for (const a of exportAccounts) {
+      const ds = a.exportDataset!;
+      try {
+        const latest = await warehouse.latestExportDate(ds.projectId, ds.datasetId);
+        checks.push({
+          name: `BigQuery export: ${ds.datasetId}`,
+          ok: true,
+          detail: latest ? `readable — latest export ${latest}` : 'readable — no export rows yet',
+        });
+      } catch (err) {
+        checks.push({
+          name: `BigQuery export: ${ds.datasetId}`,
+          ok: false,
+          detail: `cannot read ${ds.projectId}.${ds.datasetId} — check the dataset exists and sa-api has BigQuery data access (${errMsg(err)})`,
+        });
+      }
+    }
+
+    // 50K/day/type API exposure ceiling (SPEC §12): a property capping out is losing rows the API
+    // can't return. Native Bulk Export has no row limit — surface it as an upgrade path, not an error.
+    try {
+      const rows = await warehouse.queryRows(
+        `SELECT DISTINCT property FROM ${taskLogsTable}
+         WHERE row_count >= 50000 AND logged_at > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)`,
+      );
+      const capped = rows.map((r) => String(r.property)).filter(Boolean);
+      checks.push({
+        name: 'API row ceiling',
+        ok: true, // informational — never fails the Doctor
+        detail:
+          capped.length === 0
+            ? 'no properties hitting the 50K/day API limit'
+            : `${capped.length} propert${capped.length === 1 ? 'y' : 'ies'} hit the 50K/day/type API limit (losing rows): ${capped.join(', ')}. Consider adding Google's native Bulk Export for these and connecting it here (docs/NATIVE-EXPORT.md).`,
+      });
+    } catch {
+      // task_logs may not exist yet (pre-collection) — skip silently.
+    }
+
     // Setup-health (catch the misconfigurations that silently break sign-in).
     try {
       const wc = await getWebClientConfig();

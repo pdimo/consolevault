@@ -24,7 +24,11 @@ export function computeMissingDays(allDays: string[], terminalDays: Set<string>)
 export async function reconcile(): Promise<{ properties: number; created: number }> {
   const propertyRepo = new PropertyRepository();
   const taskRepo = new TaskRepository();
-  const properties = (await propertyRepo.list()).filter((p) => p.included);
+  // Native-export properties are read from their Bulk Export dataset via adapter views (SPEC §12) —
+  // never collected via the API, so they never enter the planner.
+  const properties = (await propertyRepo.list()).filter(
+    (p) => p.included && p.source !== 'native_export',
+  );
 
   let created = 0;
   for (const property of properties) {

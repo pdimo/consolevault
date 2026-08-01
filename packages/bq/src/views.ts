@@ -16,8 +16,27 @@ export const WILDCARD_VIEWS: ReadonlyArray<{ dataset: string; viewId: string }> 
   { dataset: DATASETS.totals, viewId: 'totals_all' },
 ];
 
-export function buildWildcardViewSql(projectId: string, dataset: string): string {
-  return `SELECT *, _TABLE_SUFFIX AS source_table FROM \`${projectId}.${dataset}.*\``;
+/**
+ * Cross-property view over a data dataset. BigQuery `dataset.*` wildcards match TABLES only, not
+ * views, so native-export properties (which are adapter VIEWS, SPEC §12) must be UNION'd in
+ * explicitly by name — otherwise they vanish from the `_all` views (and from Home movers / Looker).
+ * `hasApiTables` guards the wildcard term: an install with only native-export properties has no
+ * matching tables, so `dataset.*` would error and is omitted.
+ */
+export function buildWildcardViewSql(
+  projectId: string,
+  dataset: string,
+  nativeViewTables: readonly string[] = [],
+  hasApiTables = true,
+): string {
+  const parts: string[] = [];
+  if (hasApiTables) {
+    parts.push(`SELECT *, _TABLE_SUFFIX AS source_table FROM \`${projectId}.${dataset}.*\``);
+  }
+  for (const t of nativeViewTables) {
+    parts.push(`SELECT *, '${t}' AS source_table FROM \`${projectId}.${dataset}.${t}\``);
+  }
+  return parts.join('\n  UNION ALL ');
 }
 
 /**

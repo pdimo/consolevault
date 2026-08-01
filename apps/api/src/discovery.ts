@@ -8,9 +8,13 @@
  */
 
 import { classifyTokenError } from '@consolevault/gsc';
-import { authClientForAccount, discoverAccount } from '@consolevault/store';
+import {
+  authClientForAccount,
+  discoverAccount,
+  discoverExportConnection,
+} from '@consolevault/store';
 import type { Account, TokenHealth } from '@consolevault/types';
-import { accountRepo, propertyRepo, secretStore } from './deps.js';
+import { accountRepo, propertyRepo, secretStore, warehouse } from './deps.js';
 import { HttpError } from './errors.js';
 
 async function requireAccount(accountId: string): Promise<Account> {
@@ -19,9 +23,15 @@ async function requireAccount(accountId: string): Promise<Account> {
   return account;
 }
 
-/** Run Sites:list for an account and upsert the discovered properties. */
+/**
+ * Discover a connection's properties. For `bigquery_export` this reads the native Bulk Export
+ * dataset (SPEC §12); otherwise it runs Sites:list and upserts the API-collected properties.
+ */
 export async function discoverForAccount(accountId: string): Promise<{ count: number }> {
-  await requireAccount(accountId); // 404 with the API's error shape if missing
+  const account = await requireAccount(accountId); // 404 with the API's error shape if missing
+  if (account.type === 'bigquery_export') {
+    return discoverExportConnection(account, warehouse, accountRepo, propertyRepo);
+  }
   return discoverAccount(accountId, secretStore, accountRepo, propertyRepo);
 }
 

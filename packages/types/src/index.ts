@@ -37,8 +37,21 @@ export type TaskStatus =
   | 'skipped' // (type × aggregation) not supported by the API — terminal, never collected
   | 'error';
 
-/** How an account authenticates (SPEC §3). */
-export type AccountType = 'oauth' | 'service_account';
+/**
+ * How a connection authenticates / sources data (SPEC §3, §12).
+ * - `oauth` / `service_account` collect via the Search Analytics API.
+ * - `bigquery_export` is not an auth method: it points at a Google-managed **native Bulk Export**
+ *   BigQuery dataset. Its properties are read-only imports — ConsoleVault runs no collection for
+ *   them (SPEC §12), it maps the export tables into the reporting layer via adapter views.
+ */
+export type AccountType = 'oauth' | 'service_account' | 'bigquery_export';
+
+/**
+ * Where a property's data comes from. `api` (default/undefined) = collected via the Search
+ * Analytics API into ConsoleVault's own tables. `native_export` = read from a GSC native Bulk
+ * Export dataset via adapter views; never collected (SPEC §12).
+ */
+export type PropertySource = 'api' | 'native_export';
 
 /**
  * Per-row finality label stored in `GscRow.data_state`. `final` = Google has finalized the day
@@ -75,6 +88,12 @@ export interface Account {
   createdAt: string; // ISO 8601
   lastSuccessAt?: string; // ISO 8601
   propertyCount?: number;
+  /**
+   * For `bigquery_export` connections only: the GSC native Bulk Export dataset to read
+   * (SPEC §12). `projectId` defaults to this deployment's project; `datasetId` defaults to
+   * `searchconsole` (GSC's default export dataset name).
+   */
+  exportDataset?: { projectId: string; datasetId: string };
 }
 
 /** Per-property collection configuration (SPEC §7, §8). */
@@ -96,6 +115,12 @@ export interface Property {
   propertyType: PropertyType;
   /** Sanitized, BigQuery-safe table name derived from the property (SPEC §6.1). */
   sanitizedTableName: string;
+  /**
+   * Data source (SPEC §12). Absent/`api` = collected via the Search Analytics API. `native_export`
+   * = imported from a GSC native Bulk Export dataset via adapter views; never collected. The
+   * reporting layer treats both identically (the adapter views expose the shared row schema).
+   */
+  source?: PropertySource;
   /** Whether collection is enabled for this property. */
   included: boolean;
   /** Preferred account for collection; failover order in `accountIds` (SPEC §3). */

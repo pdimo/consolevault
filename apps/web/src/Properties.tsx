@@ -29,6 +29,7 @@ const STATUS_LABEL: Record<StatusKind | 'any', string> = {
   collecting: 'Collecting',
   error: 'Error',
   untracked: 'Not tracked',
+  imported: 'BigQuery export',
 };
 
 export default function Properties() {
@@ -259,6 +260,7 @@ export default function Properties() {
                   </Link>
                   <div className="text-xs text-muted">
                     {p.propertyType === 'domain' ? 'Domain' : 'URL-prefix'}
+                    {p.source === 'native_export' && ' · BigQuery export'}
                   </div>
                 </Td>
                 <Td>
@@ -267,7 +269,9 @@ export default function Properties() {
                 <Td className="whitespace-nowrap text-muted">
                   {p.accountIds.map(accountName).join(', ')}
                 </Td>
-                <Td className="text-muted">{p.config.types.join(', ')}</Td>
+                <Td className="text-muted">
+                  {p.source === 'native_export' ? '—' : p.config.types.join(', ')}
+                </Td>
                 <Td className="text-center">
                   <div className="flex justify-center">
                     <Switch

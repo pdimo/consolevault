@@ -31,15 +31,17 @@ locals {
   project_roles = {
     # API/UI runtime: control-plane RW, read tokens (read only), run BQ read jobs, telemetry.
     # secretmanager.admin: the in-UI connect flow creates per-account token secrets (bounded to this
-    # project's own secrets). workflows/cloudtasks viewer + invoker power the Doctor, queue status,
-    # and "Run pipeline now".
+    # project's own secrets), and account deletion destroys them (secrets.delete). workflows/cloudtasks
+    # invoker power the Doctor, queue status, and "Run pipeline now".
+    # cloudtasks.queueAdmin (supersedes viewer): account deletion deletes the per-account queue; the
+    # narrowest predefined role that includes queues.delete while still covering get/list for status.
     api = [
       "roles/datastore.user",
       "roles/secretmanager.admin",
       "roles/bigquery.jobUser",
       "roles/workflows.invoker",
       "roles/workflows.viewer",
-      "roles/cloudtasks.viewer",
+      "roles/cloudtasks.queueAdmin",
       "roles/logging.logWriter",
       "roles/monitoring.metricWriter",
       # Manage the alert email channel + attach it to the alert policies (runtime, on Settings save).
@@ -129,6 +131,47 @@ resource "google_bigquery_dataset_iam_member" "workflows_byproperty_viewer" {
   dataset_id = google_bigquery_dataset.datasets["gsc_byProperty"].dataset_id
   role       = "roles/bigquery.dataViewer"
   member     = "serviceAccount:${google_service_account.workflows.email}"
+}
+
+# Native Bulk Export adapter views (SPEC §12) live at gsc_byProperty.<name> / gsc_byPage.<name> so
+# they drop into the reporting layer. Creating/replacing a VIEW needs dataEditor on the host
+# dataset. Both the API (synchronous "Connect a BigQuery export" flow) and the orchestrator (daily
+# re-provision) create them, so grant both dataEditor on the two data datasets.
+locals {
+  native_view_hosts = toset(["gsc_byProperty", "gsc_byPage"])
+  native_view_editors = merge([
+    for host in local.native_view_hosts : {
+      "api:${host}"       = { sa = google_service_account.api.email, host = host }
+      "workflows:${host}" = { sa = google_service_account.workflows.email, host = host }
+    }
+  ]...)
+}
+
+resource "google_bigquery_dataset_iam_member" "native_view_editors" {
+  for_each   = local.native_view_editors
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.datasets[each.value.host].dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${each.value.sa}"
+}
+
+# Read access to each configured native-export dataset (SPEC §12). The datasets are created by
+# Google's export (not Terraform), so they're referenced by id; list them in native_export_datasets.
+locals {
+  native_export_readers = merge([
+    for ds in var.native_export_datasets : {
+      "api:${ds}"       = { sa = google_service_account.api.email, ds = ds }
+      "workflows:${ds}" = { sa = google_service_account.workflows.email, ds = ds }
+    }
+  ]...)
+}
+
+resource "google_bigquery_dataset_iam_member" "native_export_readers" {
+  for_each   = local.native_export_readers
+  project    = var.project_id
+  dataset_id = each.value.ds
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${each.value.sa}"
 }
 
 resource "google_bigquery_dataset_iam_member" "workflows_views_editor" {

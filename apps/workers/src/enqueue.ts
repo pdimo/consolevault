@@ -5,7 +5,7 @@
  */
 
 import { CloudTasksClient } from '@google-cloud/tasks';
-import { loadConfig } from '@consolevault/config';
+import { accountQueueId, loadConfig } from '@consolevault/config';
 import { DISPATCH_PER_SECOND_PER_ACCOUNT } from '@consolevault/gsc';
 import { TaskRepository } from '@consolevault/store';
 import type { Task } from '@consolevault/types';
@@ -25,17 +25,17 @@ const RETRY_CONFIG = {
   maxDoublings: 6,
 };
 
-function queueId(accountId: string): string {
-  return `cv-acct-${accountId}`.slice(0, 100);
-}
-
 function isAlreadyExists(err: unknown): boolean {
   return (err as { code?: number }).code === 6; // gRPC ALREADY_EXISTS
 }
 
 async function ensureQueue(accountId: string): Promise<string> {
   const parent = tasksClient.locationPath(config.projectId, config.region);
-  const queuePath = tasksClient.queuePath(config.projectId, config.region, queueId(accountId));
+  const queuePath = tasksClient.queuePath(
+    config.projectId,
+    config.region,
+    accountQueueId(accountId),
+  );
   const desired = {
     name: queuePath,
     rateLimits: {

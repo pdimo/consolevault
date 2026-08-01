@@ -32,6 +32,9 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [saEmail, setSaEmail] = useState('');
   const [saLabel, setSaLabel] = useState('');
+  const [expDataset, setExpDataset] = useState('searchconsole');
+  const [expProject, setExpProject] = useState('');
+  const [expLabel, setExpLabel] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const busy = busyKey !== null;
 
@@ -84,7 +87,8 @@ export default function Accounts() {
     if (
       await confirm({
         title: `Remove ${a.displayName}?`,
-        message: 'Its stored credentials are deleted. Collected data in BigQuery is kept.',
+        message:
+          'Its stored credentials, task queue, and pending jobs are deleted. Collected data in BigQuery is kept.',
         confirmLabel: 'Remove',
         danger: true,
       })
@@ -136,10 +140,25 @@ export default function Accounts() {
             {accounts.map((a) => (
               <tr key={a.id} className="hover:bg-surface-2/50">
                 <Td className="font-medium">{a.displayName}</Td>
-                <Td>{a.type === 'oauth' ? 'OAuth' : 'Service account'}</Td>
-                <Td className="text-muted">{a.email ?? '—'}</Td>
                 <Td>
-                  <Badge tone={HEALTH_TONE[a.tokenHealth]}>{a.tokenHealth}</Badge>
+                  {a.type === 'oauth'
+                    ? 'OAuth'
+                    : a.type === 'bigquery_export'
+                      ? 'BigQuery export'
+                      : 'Service account'}
+                </Td>
+                <Td className="text-muted">
+                  {a.email ??
+                    (a.exportDataset
+                      ? `${a.exportDataset.projectId}.${a.exportDataset.datasetId}`
+                      : '—')}
+                </Td>
+                <Td>
+                  {a.type === 'bigquery_export' ? (
+                    <Badge tone="ok">import</Badge>
+                  ) : (
+                    <Badge tone={HEALTH_TONE[a.tokenHealth]}>{a.tokenHealth}</Badge>
+                  )}
                 </Td>
                 <Td className="text-muted">
                   {a.lastSuccessAt ? new Date(a.lastSuccessAt).toLocaleString() : '—'}
@@ -164,20 +183,22 @@ export default function Accounts() {
                     >
                       Discover
                     </Button>
-                    <Button
-                      size="sm"
-                      disabled={busy}
-                      loading={busyKey === `health:${a.id}`}
-                      onClick={() =>
-                        void run(
-                          `health:${a.id}`,
-                          () => api.checkHealth(a.id),
-                          (r) => toast(healthMsg(r.tokenHealth), healthTone(r.tokenHealth)),
-                        )
-                      }
-                    >
-                      Check health
-                    </Button>
+                    {a.type !== 'bigquery_export' && (
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        loading={busyKey === `health:${a.id}`}
+                        onClick={() =>
+                          void run(
+                            `health:${a.id}`,
+                            () => api.checkHealth(a.id),
+                            (r) => toast(healthMsg(r.tokenHealth), healthTone(r.tokenHealth)),
+                          )
+                        }
+                      >
+                        Check health
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -240,6 +261,60 @@ export default function Accounts() {
             }
           >
             Register
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="mt-5" title="Connect a BigQuery export">
+        <p className="text-sm text-muted">
+          Already streaming Search Console data into BigQuery with Google&apos;s native{' '}
+          <strong>Bulk Export</strong>? Point ConsoleVault at that dataset to get the full reporting
+          layer on top of it — <strong>no API collection, no backfill limit</strong>. These
+          properties are read-only imports. Leave the project blank to use this deployment&apos;s
+          project.
+        </p>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <Field label="dataset id">
+            <TextInput value={expDataset} onChange={(e) => setExpDataset(e.target.value)} />
+          </Field>
+          <Field label="project id (optional)">
+            <TextInput
+              className="w-72"
+              placeholder="this deployment's project"
+              value={expProject}
+              onChange={(e) => setExpProject(e.target.value)}
+            />
+          </Field>
+          <Field label="label (optional)">
+            <TextInput value={expLabel} onChange={(e) => setExpLabel(e.target.value)} />
+          </Field>
+          <Button
+            variant="primary"
+            disabled={busy || !expDataset.trim()}
+            loading={busyKey === 'exp-register'}
+            onClick={() =>
+              void run(
+                'exp-register',
+                async () => {
+                  const account = await api.addBigQueryExport({
+                    name: expLabel.trim(),
+                    projectId: expProject.trim(),
+                    datasetId: expDataset.trim(),
+                  });
+                  return api.discover(account.id);
+                },
+                (r) => {
+                  toast(
+                    `Export connected — imported ${r.count} ${r.count === 1 ? 'property' : 'properties'}`,
+                    'success',
+                  );
+                  setExpLabel('');
+                  setExpProject('');
+                },
+              )
+            }
+          >
+            Connect export
           </Button>
         </div>
       </Card>

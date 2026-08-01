@@ -2,8 +2,18 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { DEFAULT_EXPORT_DATASET } from '@consolevault/bq';
 import type { Account, CollectionConfig } from '@consolevault/types';
-import { accountRepo, propertyRepo } from './deps.js';
+import {
+  accountRepo,
+  config,
+  propertyRepo,
+  secretStore,
+  taskRepo,
+  tasksClient,
+  warehouse,
+} from './deps.js';
+import { deleteAccountCascade } from './accounts-cleanup.js';
 import { checkAccountHealth, discoverForAccount } from './discovery.js';
 import { HttpError } from './errors.js';
 
@@ -33,6 +43,26 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return account;
   });
 
+  // Register a native BigQuery Bulk Export connection (SPEC §12): points at an existing GSC export
+  // dataset. Not an auth method — no token. Properties are discovered from BigQuery, not the API.
+  app.post('/api/accounts/bigquery-export', async (req, reply) => {
+    const body = (req.body ?? {}) as { name?: string; projectId?: string; datasetId?: string };
+    const projectId = body.projectId?.trim() || config.projectId;
+    const datasetId = body.datasetId?.trim() || DEFAULT_EXPORT_DATASET;
+    const id = randomUUID();
+    const account: Account = {
+      id,
+      type: 'bigquery_export',
+      displayName: body.name?.trim() || `BigQuery export (${datasetId})`,
+      tokenHealth: 'valid',
+      createdAt: new Date().toISOString(),
+      exportDataset: { projectId, datasetId },
+    };
+    await accountRepo.create(account);
+    reply.code(201);
+    return account;
+  });
+
   app.post<{ Params: IdParams }>('/api/accounts/:id/discover', async (req) =>
     discoverForAccount(req.params.id),
   );
@@ -41,10 +71,17 @@ export function registerApiRoutes(app: FastifyInstance): void {
     tokenHealth: await checkAccountHealth(req.params.id),
   }));
 
-  app.delete<{ Params: IdParams }>('/api/accounts/:id', async (req, reply) => {
-    await accountRepo.delete(req.params.id);
-    reply.code(204);
-  });
+  app.delete<{ Params: IdParams }>('/api/accounts/:id', async (req) =>
+    deleteAccountCascade(req.params.id, {
+      accountRepo,
+      taskRepo,
+      secretStore,
+      tasksClient,
+      propertyRepo,
+      warehouse,
+      config,
+    }),
+  );
 
   app.get('/api/properties', async () => propertyRepo.list());
 

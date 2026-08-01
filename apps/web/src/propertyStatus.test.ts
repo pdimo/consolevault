@@ -17,6 +17,18 @@ describe('propertyStatus', () => {
     expect(propertyStatus({ ...base, included: false }).kind).toBe('untracked');
   });
 
+  it('imported for native-export properties, regardless of collection status', () => {
+    expect(propertyStatus({ ...base, source: 'native_export' }).kind).toBe('imported');
+    // even with a stale collection status stamped, the import chip wins
+    expect(
+      propertyStatus({
+        ...base,
+        source: 'native_export',
+        status: { lastCollectedDate: '2026-06-10', dataState: 'final' },
+      }).label,
+    ).toBe('BigQuery export');
+  });
+
   it('collecting when tracked but no data yet', () => {
     expect(propertyStatus(base).kind).toBe('collecting');
   });

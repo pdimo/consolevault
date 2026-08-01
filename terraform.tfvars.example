@@ -14,6 +14,11 @@ app_name     = "consolevault"
 # Optional: default BigQuery table/partition expiry in days (null = never expire).
 default_partition_expiry_days = null
 
+# SPEC §12 — connect existing GSC native Bulk Export dataset(s) in THIS project. List each dataset
+# id so ConsoleVault can read it and build adapter views (then add it in the UI: Connections →
+# Connect a BigQuery export). Leave empty if you don't use native Bulk Export.
+native_export_datasets = [] # e.g. ["searchconsole"]
+
 # Stage 4: Google account email(s) allowed to sign in to the management UI.
 admin_emails = ["you@example.com"]
 

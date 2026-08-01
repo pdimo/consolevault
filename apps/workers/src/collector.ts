@@ -123,6 +123,14 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
   const property = await propertyRepo.get(input.propertyId);
   if (!property) throw new Error(`Property not found: ${input.propertyId}`);
 
+  // Defensive: native-export properties are never collected (SPEC §12) — the planner already skips
+  // them, but a stale queued task must not run the API path against a read-only import.
+  if (property.source === 'native_export') {
+    const id = taskId(input.propertyId, searchType, aggregation, input.dataDate);
+    await taskRepo.setTerminal(id, 'skipped').catch(() => {});
+    return { taskId: id, status: 'skipped', rows: 0 };
+  }
+
   // Defensive: a stale task for an API-unsupported cell (e.g. discover×byProperty) is terminal-skipped,
   // not errored — the planner already filters these, but old queued tasks shouldn't spam errors.
   if (!isValidCombo(searchType, aggregation)) {

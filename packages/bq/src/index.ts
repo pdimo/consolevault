@@ -10,5 +10,6 @@ export * from './sanitize.js';
 export * from './rowhash.js';
 export * from './write.js';
 export * from './views.js';
+export * from './native-export.js';
 export * from './analytics.js';
 export * from './autogroup.js';

@@ -1,5 +1,6 @@
 /** Shared singletons for the control-plane API (config + repos + Secret Manager + warehouse). */
 
+import { CloudTasksClient } from '@google-cloud/tasks';
 import { loadConfig } from '@consolevault/config';
 import {
   AccountRepository,
@@ -19,6 +20,7 @@ export const taskRepo = new TaskRepository();
 export const groupRepo = new GroupRepository();
 export const settingsRepo = new SettingsRepository();
 export const secretStore = new SecretStore(config.projectId);
+export const tasksClient: CloudTasksClient = new CloudTasksClient();
 export const warehouse = new Warehouse({
   projectId: config.projectId,
   location: config.bqLocation,

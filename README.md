@@ -45,6 +45,17 @@ client, then `./setup.sh` uploads it (see [docs/AUTH.md](./docs/AUTH.md) for eve
 Prefer to look around first? **Settings → Sample data** adds a demo client with fully populated
 reports.
 
+## Already using Google's native BigQuery export?
+
+Google's native **Bulk Export** streams GSC data into a BigQuery dataset you own, but it's
+forward-only (no backfill), owner-only, and one project per property — unworkable as an agency's
+sole pipeline. ConsoleVault's API collection solves exactly that (backfilled, multi-account,
+multi-property). But the two are complementary: if you already run the native export, **connect
+that dataset** and ConsoleVault puts its whole reporting layer on top of it — no collection, and no
+50K-row/day API ceiling. Use API collection for backfilled history and native export for your
+largest properties. **Connections → Connect a BigQuery export**, or see
+**[docs/NATIVE-EXPORT.md](./docs/NATIVE-EXPORT.md)**.
+
 ## Configuration (per-install, nothing hardcoded)
 
 Deploy-time values live in `terraform/terraform.tfvars` (see
@@ -61,6 +72,7 @@ Deploy-time values live in `terraform/terraform.tfvars` (see
 | `daily_schedule`                | Cron for the daily pipeline                        | `0 9 * * *`   |
 | `token_health_schedule`         | Cron for the token-health sweep                    | `0 */6 * * *` |
 | `default_partition_expiry_days` | BigQuery retention (null = forever)                | `null`        |
+| `native_export_datasets`        | GSC native Bulk Export dataset ids to read (§12)   | `[]`          |
 
 Runtime values live in the **Settings UI**: collection defaults (offset/backfill/types/aggs) and
 the **alert email** (each operator sets their own — the app provisions the Monitoring channel).

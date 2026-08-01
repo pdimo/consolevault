@@ -81,6 +81,12 @@ variable "default_partition_expiry_days" {
   default     = null
 }
 
+variable "native_export_datasets" {
+  type        = list(string)
+  description = "GSC native Bulk Export dataset ids IN THIS PROJECT to grant the API/orchestrator read access to (SPEC §12 — 'Connect a BigQuery export'). Add each export dataset here (e.g. [\"searchconsole\"]) so ConsoleVault can read it and build adapter views. Cross-project export datasets are a post-v1 follow-up."
+  default     = []
+}
+
 variable "api_image" {
   type        = string
   description = "Container image for the control-plane API Cloud Run service. Built and pushed by scripts/build-push.sh before apply."
