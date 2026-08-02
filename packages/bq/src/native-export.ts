@@ -62,6 +62,21 @@ function tableRef(projectId: string, datasetId: string, tableId: string): string
 }
 
 /**
+ * The Bulk Export stores `search_type` in UPPERCASE (`WEB`, `NEWS`, `GOOGLE_NEWS`, …) whereas
+ * ConsoleVault (and every report filter, e.g. `search_type = 'web'`) uses the API's mixed-case
+ * values. Normalise it in the adapter view or reports match nothing.
+ */
+const SEARCH_TYPE_EXPR = `CASE UPPER(search_type)
+      WHEN 'WEB' THEN 'web'
+      WHEN 'IMAGE' THEN 'image'
+      WHEN 'VIDEO' THEN 'video'
+      WHEN 'NEWS' THEN 'news'
+      WHEN 'DISCOVER' THEN 'discover'
+      WHEN 'GOOGLE_NEWS' THEN 'googleNews'
+      ELSE LOWER(search_type)
+    END`;
+
+/**
  * `row_hash` expression matching {@link rowHash} exactly: sha256 hex of the identity tuple joined
  * with `|`, every element coerced to a non-null string (mirrors `x ?? ''` / `String(bool)` in JS).
  */
@@ -70,7 +85,7 @@ function rowHashExpr(aggregation: 'byProperty' | 'byPage', anonymizedExpr: strin
   return `TO_HEX(SHA256(ARRAY_TO_STRING([
       site_url,
       CAST(data_date AS STRING),
-      search_type,
+      ${SEARCH_TYPE_EXPR},
       '${aggregation}',
       IFNULL(query, ""),
       ${page},
@@ -95,7 +110,7 @@ export function buildNativeByPropertyViewSql(
     data_date,
     site_url AS property,
     '${propertyType}' AS property_type,
-    search_type,
+    ${SEARCH_TYPE_EXPR} AS search_type,
     'byProperty' AS aggregation,
     NULLIF(query, '') AS query,
     CAST(NULL AS STRING) AS page,
@@ -129,7 +144,7 @@ export function buildNativeByPageViewSql(
     data_date,
     site_url AS property,
     '${propertyType}' AS property_type,
-    search_type,
+    ${SEARCH_TYPE_EXPR} AS search_type,
     'byPage' AS aggregation,
     NULLIF(query, '') AS query,
     url AS page,
