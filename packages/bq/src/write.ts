@@ -492,10 +492,31 @@ export class Warehouse {
     }
   }
 
-  /** Create a dataset in a specific location if it doesn't exist (region-local native landing). */
+  /**
+   * Create a region-local native landing dataset if missing, and ensure BOTH app service accounts
+   * can manage views in it. A landing dataset can be created by either sa-api (connect flow) or
+   * sa-workflows (daily discovery); its creator becomes OWNER, so without this the OTHER SA can't
+   * create/drop the adapter views (e.g. removal fails with `bigquery.tables.delete denied`).
+   * Idempotent — reconciles the ACL every call, so a dataset created by one SA still gets the other.
+   */
   async ensureDataset(datasetId: string, location: string): Promise<void> {
-    const [exists] = await this.bq.dataset(datasetId).exists();
+    const ds = this.bq.dataset(datasetId);
+    const [exists] = await ds.exists();
     if (!exists) await this.bq.createDataset(datasetId, { location });
+    const writers = ['sa-api', 'sa-workflows'].map(
+      (sa) => `${sa}@${this.cfg.projectId}.iam.gserviceaccount.com`,
+    );
+    const [md] = await ds.getMetadata();
+    const access: Array<{ role?: string; userByEmail?: string }> = md.access ?? [];
+    const have = new Set(access.map((a) => `${a.role}:${a.userByEmail ?? ''}`));
+    let changed = false;
+    for (const email of writers) {
+      if (!have.has(`WRITER:${email}`)) {
+        access.push({ role: 'WRITER', userByEmail: email });
+        changed = true;
+      }
+    }
+    if (changed) await ds.setMetadata({ ...md, access });
   }
 
   /** Distinct site_urls in a native-export dataset — the property list for discovery (SPEC §12). */
