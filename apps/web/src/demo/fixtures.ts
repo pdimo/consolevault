@@ -42,10 +42,11 @@ export function setDemo(on: boolean): void {
 }
 
 export const demoClient: DashboardListItem = {
-  type: 'property',
+  type: 'client',
   id: DEMO_ID,
   name: 'sample-agency.com (demo)',
   brandTerms: ['sample-agency', 'sampleagency'],
+  propertyCount: 1,
 };
 
 export const demoProperty: Property = {

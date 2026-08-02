@@ -10,18 +10,16 @@ interface NavItem {
   icon: string;
 }
 const NAV: { group?: string; items: NavItem[] }[] = [
-  { items: [{ to: '/home', label: 'Home', icon: '▤' }] },
   {
-    group: 'Clients',
     items: [
+      { to: '/home', label: 'Home', icon: '▤' },
       { to: '/clients', label: 'Clients', icon: '◧' },
-      { to: '/properties', label: 'Properties', icon: '▦' },
-      { to: '/groups', label: 'Rollups', icon: '❏' },
     ],
   },
   {
     group: 'Admin',
     items: [
+      { to: '/properties', label: 'Properties', icon: '▦' },
       { to: '/accounts', label: 'Connections', icon: '⚿' },
       { to: '/jobs', label: 'Jobs', icon: '↻' },
       { to: '/health', label: 'Health', icon: '✚' },

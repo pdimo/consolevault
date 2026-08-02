@@ -112,9 +112,13 @@ export function registerApiRoutes(app: FastifyInstance): void {
       preferredAccountId?: string;
       dashboardEnabled?: boolean;
       brandTerms?: string[];
+      clientId?: string;
     };
     if (typeof body.included === 'boolean') {
       await propertyRepo.setIncluded(req.params.id, body.included);
+    }
+    if (typeof body.clientId === 'string' && body.clientId) {
+      await propertyRepo.setClient(req.params.id, body.clientId);
     }
     if (body.config) {
       await propertyRepo.updateConfig(req.params.id, body.config);

@@ -239,6 +239,17 @@ export class PropertyRepository {
     await this.col().doc(id).set({ brandTerms }, { merge: true });
   }
 
+  /** Assign a property to its owning client (IA v2). */
+  async setClient(id: string, clientId: string): Promise<void> {
+    await this.col().doc(id).set({ clientId }, { merge: true });
+  }
+
+  /** Properties owned by a client (single-field equality, auto-indexed). */
+  async listByClient(clientId: string): Promise<Property[]> {
+    const snap = await this.col().where('clientId', '==', clientId).get();
+    return snap.docs.map((d) => d.data() as Property);
+  }
+
   /** Merge denormalized collection status onto a property doc (Stage 7 — fast list rendering). */
   async setStatus(id: string, status: Partial<PropertyStatus>): Promise<void> {
     const patch: Record<string, unknown> = {};

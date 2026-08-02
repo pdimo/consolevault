@@ -4,6 +4,7 @@ import { CloudTasksClient } from '@google-cloud/tasks';
 import { loadConfig } from '@consolevault/config';
 import {
   AccountRepository,
+  ClientRepository,
   GroupRepository,
   PropertyRepository,
   SECRET_IDS,
@@ -18,6 +19,7 @@ export const accountRepo = new AccountRepository();
 export const propertyRepo = new PropertyRepository();
 export const taskRepo = new TaskRepository();
 export const groupRepo = new GroupRepository();
+export const clientRepo = new ClientRepository();
 export const settingsRepo = new SettingsRepository();
 export const secretStore = new SecretStore(config.projectId);
 export const tasksClient: CloudTasksClient = new CloudTasksClient();

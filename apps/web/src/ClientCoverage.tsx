@@ -103,7 +103,59 @@ function RollupCoverage({ id }: { id: string }) {
   );
 }
 
+/** A client's coverage = its members' coverage. One member → its heatmap; many → a member summary. */
+function ClientCoverageView({ id }: { id: string }) {
+  const [members, setMembers] = useState<{ id: string; siteUrl: string }[] | null | 'error'>(null);
+  useEffect(() => {
+    api
+      .clientDetail(id)
+      .then((d) => setMembers(d.properties))
+      .catch(() => setMembers('error'));
+  }, [id]);
+
+  // Unknown client (e.g. demo) → fall back to the target's own coverage (serves demo data too).
+  if (members === 'error') return <PropertyCoverage id={id} />;
+  if (!members) {
+    return (
+      <div className="grid place-items-center py-20 text-muted">
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (members.length === 1 && members[0]) return <PropertyCoverage id={members[0].id} />;
+
+  return (
+    <Card title="Member coverage">
+      <p className="mb-3 text-sm text-muted">
+        This client reports across its properties. Open a property to see its full coverage heatmap.
+      </p>
+      {members.length === 0 ? (
+        <p className="text-sm text-muted">This client has no properties yet.</p>
+      ) : (
+        <ul className="flex flex-col">
+          {members.map((m) => (
+            <li
+              key={m.id}
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-2 last:border-0"
+            >
+              <span className="break-all text-sm">{m.siteUrl}</span>
+              <Link
+                to={`/clients/property/${m.id}/coverage`}
+                className="shrink-0 text-sm text-accent hover:underline"
+              >
+                View →
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function ClientCoverage() {
   const { type = 'property', id = '' } = useParams();
-  return type === 'group' ? <RollupCoverage id={id} /> : <PropertyCoverage id={id} />;
+  if (type === 'client') return <ClientCoverageView id={id} />;
+  if (type === 'group') return <RollupCoverage id={id} />;
+  return <PropertyCoverage id={id} />;
 }

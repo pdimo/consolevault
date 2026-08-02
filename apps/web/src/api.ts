@@ -223,6 +223,23 @@ export const api = {
     const list = await http<DashboardListItem[]>('/api/clients');
     return isDemoOn() ? [demoClient, ...list] : list;
   },
+  clientDetail: (id: string) =>
+    http<{
+      id: string;
+      name: string;
+      brandTerms?: string[];
+      properties: { id: string; siteUrl: string; propertyType: string; source: string }[];
+    }>(`/api/clients/${id}/detail`),
+  updateClient: (id: string, body: { name?: string; brandTerms?: string[] }) =>
+    http<{ id: string; name: string }>(`/api/clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  createClient: (name: string, propertyIds?: string[]) =>
+    http<{ id: string; name: string }>('/api/clients', {
+      method: 'POST',
+      body: JSON.stringify({ name, propertyIds }),
+    }),
   dashboardKpis: (type: string, id: string, qs: string) =>
     isDemoOn() && id === DEMO_ID
       ? Promise.resolve(demoKpis())

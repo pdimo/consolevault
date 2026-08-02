@@ -6,8 +6,11 @@
 import { useParams } from 'react-router-dom';
 import Property from './Property';
 import RollupConfigure from './RollupConfigure';
+import ClientConfigureView from './ClientConfigureView';
 
 export default function ClientConfigure() {
   const { type } = useParams();
-  return type === 'group' ? <RollupConfigure /> : <Property embedded />;
+  if (type === 'client') return <ClientConfigureView />;
+  if (type === 'group') return <RollupConfigure />;
+  return <Property embedded />;
 }

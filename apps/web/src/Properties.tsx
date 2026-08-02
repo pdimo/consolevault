@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { Account, Property } from '@consolevault/types';
+import type { Account, DashboardListItem, Property } from '@consolevault/types';
 import { api } from './api';
 import { useToast } from './components/feedback';
 import { propertyStatus, type StatusKind } from './propertyStatus';
@@ -36,6 +36,7 @@ export default function Properties() {
   const toast = useToast();
   const [properties, setProperties] = useState<Property[] | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [clients, setClients] = useState<DashboardListItem[]>([]);
   const [tab, setTab] = useState<Tab>('tracking');
   const [filter, setFilter] = useState('');
   const [acct, setAcct] = useState('any');
@@ -46,6 +47,7 @@ export default function Properties() {
   const load = async () => {
     setProperties(await api.listProperties());
     setAccounts(await api.listAccounts());
+    setClients((await api.listClients()).filter((c) => c.type === 'client'));
   };
   useEffect(() => {
     load().catch((e: unknown) => toast(String(e), 'error'));
@@ -53,6 +55,25 @@ export default function Properties() {
 
   const accountName = (id: string) =>
     accounts.find((a) => a.id === id)?.displayName ?? id.slice(0, 8);
+  const clientName = (id?: string) => clients.find((c) => c.id === id)?.name;
+
+  // Reassign a property to another client (or create a new client for it).
+  const assign = async (p: Property, value: string) => {
+    try {
+      let clientId = value;
+      if (value === '__new') {
+        const name = window.prompt('New client name?', clientName(p.clientId) ?? '')?.trim();
+        if (!name) return;
+        clientId = (await api.createClient(name, [p.id])).id;
+      } else {
+        await api.patchProperty(p.id, { clientId });
+      }
+      await load();
+      toast('Property reassigned', 'success');
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
 
   const counts = useMemo(() => {
     const tracking = properties?.filter((p) => p.included).length ?? 0;
@@ -223,6 +244,7 @@ export default function Properties() {
               />
             </Th>
             <Th>Property</Th>
+            <Th>Client</Th>
             <Th className="w-44">Status</Th>
             <Th>Account(s)</Th>
             <Th>Search types</Th>
@@ -262,6 +284,25 @@ export default function Properties() {
                     {p.propertyType === 'domain' ? 'Domain' : 'URL-prefix'}
                     {p.source === 'native_export' && ' · BigQuery export'}
                   </div>
+                </Td>
+                <Td>
+                  {p.included ? (
+                    <Select
+                      value={p.clientId ?? ''}
+                      onChange={(e) => void assign(p, e.target.value)}
+                      className="max-w-48 text-sm"
+                    >
+                      {!p.clientId && <option value="">— unassigned —</option>}
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="__new">＋ New client…</option>
+                    </Select>
+                  ) : (
+                    <span className="text-xs text-muted">—</span>
+                  )}
                 </Td>
                 <Td>
                   <Badge tone={st.tone}>{st.label}</Badge>

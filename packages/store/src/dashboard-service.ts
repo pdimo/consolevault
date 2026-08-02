@@ -32,7 +32,7 @@ import {
   Warehouse,
   type Rollup,
 } from '@consolevault/bq';
-import type { DashboardFilters, MatchRule } from '@consolevault/types';
+import type { DashboardFilters, MatchRule, Property } from '@consolevault/types';
 import { GroupRepository } from './groups.js';
 import { PropertyRepository } from './properties.js';
 import { SemanticGroupRepository } from './semantic-groups.js';
@@ -198,37 +198,37 @@ export class DashboardService {
    * runs in the deploy region. Rollups union only deploy-region tables (cross-region native members
    * aren't in gsc_byProperty, so `tableExists` naturally excludes them).
    */
-  private async resolveFrom(
-    type: string,
-    id: string,
+  /** Resolve a single property → FROM operand + location (handles cross-region native export). */
+  private async resolveProperty(
+    p: Property,
     dataset: string,
   ): Promise<{ from: string; location: string } | null> {
     const deploy = this.warehouse.location;
-    if (type === 'property') {
-      const p = await this.props.get(id);
-      if (!p) return null;
-      // Cross-region native export → region-local landing dataset + that region's location.
-      if (
-        p.source === 'native_export' &&
-        p.exportLocation &&
-        p.exportLocation.toUpperCase() !== deploy.toUpperCase()
-      ) {
-        const landing = nativeLandingDataset(p.exportLocation);
-        const view =
-          dataset === DATASETS.byPage
-            ? nativePageViewName(p.sanitizedTableName)
-            : p.sanitizedTableName;
-        return { from: fromTable(this.projectId, landing, view), location: p.exportLocation };
-      }
-      return (await this.warehouse.tableExists(dataset, p.sanitizedTableName))
-        ? { from: fromTable(this.projectId, dataset, p.sanitizedTableName), location: deploy }
-        : null;
+    if (
+      p.source === 'native_export' &&
+      p.exportLocation &&
+      p.exportLocation.toUpperCase() !== deploy.toUpperCase()
+    ) {
+      const landing = nativeLandingDataset(p.exportLocation);
+      const view =
+        dataset === DATASETS.byPage
+          ? nativePageViewName(p.sanitizedTableName)
+          : p.sanitizedTableName;
+      return { from: fromTable(this.projectId, landing, view), location: p.exportLocation };
     }
-    const g = await this.groups.get(id);
-    if (!g) return null;
-    const members = (await Promise.all(g.memberPropertyIds.map((m) => this.props.get(m)))).filter(
-      (m): m is NonNullable<typeof m> => Boolean(m),
-    );
+    return (await this.warehouse.tableExists(dataset, p.sanitizedTableName))
+      ? { from: fromTable(this.projectId, dataset, p.sanitizedTableName), location: deploy }
+      : null;
+  }
+
+  /** Union of same-region member tables (deploy region). Cross-region members are excluded. */
+  private async resolveUnion(
+    members: Property[],
+    dataset: string,
+  ): Promise<{ from: string; location: string } | null> {
+    const deploy = this.warehouse.location;
+    // A single member resolves as itself (so a one-property client honours cross-region native).
+    if (members.length === 1 && members[0]) return this.resolveProperty(members[0], dataset);
     const tables: string[] = [];
     for (const m of members) {
       if (await this.warehouse.tableExists(dataset, m.sanitizedTableName)) {
@@ -238,6 +238,28 @@ export class DashboardService {
     return tables.length
       ? { from: fromUnion(this.projectId, dataset, tables), location: deploy }
       : null;
+  }
+
+  private async resolveFrom(
+    type: string,
+    id: string,
+    dataset: string,
+  ): Promise<{ from: string; location: string } | null> {
+    if (type === 'property') {
+      const p = await this.props.get(id);
+      return p ? this.resolveProperty(p, dataset) : null;
+    }
+    if (type === 'client') {
+      // A client aggregates the properties it owns (IA v2).
+      return this.resolveUnion(await this.props.listByClient(id), dataset);
+    }
+    // Legacy rollup (group): union of its member properties.
+    const g = await this.groups.get(id);
+    if (!g) return null;
+    const members = (await Promise.all(g.memberPropertyIds.map((m) => this.props.get(m)))).filter(
+      (m): m is NonNullable<typeof m> => Boolean(m),
+    );
+    return this.resolveUnion(members, dataset);
   }
 
   /** Run a report and return its serializable data. */

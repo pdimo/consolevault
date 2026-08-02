@@ -10,6 +10,7 @@ export const COLLECTIONS = {
   properties: 'properties',
   tasks: 'tasks',
   groups: 'groups',
+  clients: 'clients',
   settings: 'settings',
   probeCache: 'probe_cache',
   dashboardCache: 'dashboard_cache',

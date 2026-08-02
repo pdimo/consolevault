@@ -151,6 +151,8 @@ export interface Property {
    * so edits take effect instantly with no reprocessing. First instance of a general "segment".
    */
   brandTerms?: string[];
+  /** Owning client (IA v2). Every tracked property belongs to exactly one client. */
+  clientId?: string;
 }
 
 /** Lightweight, denormalized per-property collection status for the Properties list (Stage 7). */
@@ -183,8 +185,21 @@ export interface PropertyGroup {
   brandTerms?: string[];
 }
 
-/** Analytics dashboard target + filters (Dashboards feature). */
-export type DashboardTargetType = 'property' | 'group';
+/**
+ * A Client is a business that owns one or more properties (the top-level organizing unit — IA v2).
+ * A client's report aggregates its properties (impression-weighted); a client with one property is
+ * a single-property view. Properties point at their owning client via `Property.clientId`.
+ */
+export interface Client {
+  id: string;
+  name: string;
+  /** Brand terms for the client's brand/non-brand segment (client-level default). */
+  brandTerms?: string[];
+  createdAt: string; // ISO 8601
+}
+
+/** Analytics dashboard target + filters (Dashboards feature). `client` aggregates its properties. */
+export type DashboardTargetType = 'property' | 'group' | 'client';
 
 export interface DashboardListItem {
   type: DashboardTargetType;
@@ -192,6 +207,8 @@ export interface DashboardListItem {
   name: string;
   /** Brand terms defined for this target (drives the brand/non-brand segment + split). */
   brandTerms?: string[];
+  /** For `client`: how many properties it owns (UI count). */
+  propertyCount?: number;
 }
 
 /** Shared filter/segmentation state for a dashboard (encoded in the URL). */

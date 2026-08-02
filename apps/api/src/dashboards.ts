@@ -16,7 +16,7 @@ import {
   type ReportName,
 } from '@consolevault/store';
 import type { DashboardListItem, SavedFilter } from '@consolevault/types';
-import { config, groupRepo, propertyRepo, warehouse } from './deps.js';
+import { clientRepo, config, groupRepo, propertyRepo, warehouse } from './deps.js';
 import { HttpError } from './errors.js';
 
 const REPORTS: ReportName[] = [
@@ -65,27 +65,60 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     ];
   });
 
-  // All manageable clients (tracked properties + all groups) — the client-first workspace list.
-  // NOT gated on dashboardEnabled (that flag now only controls daily cache warming): every tracked
-  // client has a report, served on demand by the same byte-capped report endpoints below.
+  // Clients — the top-level businesses (IA v2). Each owns 1..N properties; its report aggregates
+  // them. Migrates the legacy property-or-rollup model into real clients on first read (idempotent).
   app.get('/api/clients', async (): Promise<DashboardListItem[]> => {
-    const [properties, groups] = await Promise.all([propertyRepo.list(), groupRepo.list()]);
-    return [
-      ...properties
-        .filter((p) => p.included)
-        .map((p) => ({
-          type: 'property' as const,
-          id: p.id,
-          name: p.siteUrl,
-          ...(p.brandTerms?.length ? { brandTerms: p.brandTerms } : {}),
-        })),
-      ...groups.map((g) => ({
-        type: 'group' as const,
-        id: g.id,
-        name: g.name,
-        ...(g.brandTerms?.length ? { brandTerms: g.brandTerms } : {}),
+    await clientRepo.ensureClients(propertyRepo, groupRepo);
+    const clients = await clientRepo.listWithCounts(propertyRepo);
+    return clients
+      .filter((c) => c.propertyCount > 0)
+      .map((c) => ({
+        type: 'client' as const,
+        id: c.id,
+        name: c.name,
+        propertyCount: c.propertyCount,
+        ...(c.brandTerms?.length ? { brandTerms: c.brandTerms } : {}),
+      }));
+  });
+
+  // One client with its member properties (for the workspace property sub-switcher).
+  app.get('/api/clients/:id/detail', async (req) => {
+    const { id } = req.params as { id: string };
+    const client = await clientRepo.get(id);
+    if (!client) throw new HttpError(404, 'Client not found');
+    const properties = await propertyRepo.listByClient(id);
+    return {
+      ...client,
+      properties: properties.map((p) => ({
+        id: p.id,
+        siteUrl: p.siteUrl,
+        propertyType: p.propertyType,
+        source: p.source ?? 'api',
       })),
-    ];
+    };
+  });
+
+  // Rename / set brand terms.
+  app.patch('/api/clients/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { name?: string; brandTerms?: string[] };
+    const patch: Record<string, unknown> = {};
+    if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim();
+    if (Array.isArray(body.brandTerms))
+      patch.brandTerms = body.brandTerms.map((t) => String(t).trim()).filter(Boolean);
+    await clientRepo.update(id, patch);
+    return clientRepo.get(id);
+  });
+
+  // Create a client (optionally seeded with member properties).
+  app.post('/api/clients', async (req, reply) => {
+    const body = (req.body ?? {}) as { name?: string; propertyIds?: string[] };
+    if (!body.name?.trim()) throw new HttpError(400, 'name is required');
+    const id = `c_${randomUUID().slice(0, 12)}`;
+    await clientRepo.create({ id, name: body.name.trim(), createdAt: new Date().toISOString() });
+    for (const pid of body.propertyIds ?? []) await propertyRepo.setClient(pid, id);
+    reply.code(201);
+    return clientRepo.get(id);
   });
 
   // One cached endpoint per report.

@@ -12,6 +12,7 @@ export * from './auth.js';
 export * from './discovery.js';
 export * from './coverage.js';
 export * from './groups.js';
+export * from './clients.js';
 export * from './settings.js';
 export * from './probe-cache.js';
 export * from './dashboard-cache.js';

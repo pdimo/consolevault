@@ -10,7 +10,7 @@ import { SemanticGroupEditor } from './components/SemanticGroupEditor';
 
 export default function ClientContent() {
   const { type = 'property', id = '' } = useParams();
-  const scope = type === 'group' ? 'across every site in this rollup' : 'for this property';
+  const scope = type === 'property' ? 'for this property' : "across this client's properties";
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card title="Content groups">
