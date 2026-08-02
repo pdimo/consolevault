@@ -281,6 +281,43 @@ export class Warehouse {
   }
 
   /**
+   * Home movers contribution for cross-region native-export properties (SPEC §12): the same
+   * cur-vs-prev web-clicks delta per property, run IN the export's region against its adapter views
+   * in the region-local landing dataset. One query per region; results (small) return cross-region.
+   * The caller merges these with the deploy-region `homeMovers` and aggregates to client level.
+   */
+  async nativeRegionMovers(
+    region: string,
+    viewNames: string[],
+    w: { curStart: string; curEnd: string; prevStart: string; prevEnd: string },
+  ): Promise<Array<{ sourceTable: string; clicks: number; prevClicks: number }>> {
+    if (viewNames.length === 0) return [];
+    const landing = nativeLandingDataset(region);
+    const union = viewNames
+      .map(
+        (v) =>
+          `SELECT '${v}' AS source_table, data_date, clicks, search_type FROM ${this.tableRef(landing, v)}`,
+      )
+      .join('\n        UNION ALL ');
+    const rows = await this.runAnalytics(
+      `SELECT source_table,
+          SUM(IF(data_date BETWEEN @curStart AND @curEnd, clicks, 0)) AS clicks,
+          SUM(IF(data_date BETWEEN @prevStart AND @prevEnd, clicks, 0)) AS prev_clicks
+        FROM (${union})
+        WHERE data_date BETWEEN @prevStart AND @curEnd AND search_type = 'web'
+        GROUP BY source_table`,
+      w,
+      2,
+      region,
+    );
+    return rows.map((r) => ({
+      sourceTable: String(r.source_table),
+      clicks: Number(r.clicks ?? 0),
+      prevClicks: Number(r.prev_clicks ?? 0),
+    }));
+  }
+
+  /**
    * Real recent spend from a Cloud Billing export dataset (SPEC §11, opt-in). Sums the standard
    * `gcp_billing_export_v1_*` table over the last 30 days, by service. Returns null if the export
    * isn't set up (dataset/table missing) so the Costs panel falls back to the storage estimate.

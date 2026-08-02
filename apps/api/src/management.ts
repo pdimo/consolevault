@@ -28,6 +28,7 @@ import type { Aggregation, PropertyGroup, SearchType, Settings, Task } from '@co
 import {
   accountRepo,
   adminEmails,
+  clientRepo,
   config,
   getWebClientConfig,
   groupRepo,
@@ -469,30 +470,64 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     const curStart = addDays(curEnd, -27);
     const prevEnd = addDays(curStart, -1);
     const prevStart = addDays(prevEnd, -27);
-    const [rows, properties] = await Promise.all([
-      warehouse.homeMovers({ curStart, curEnd, prevStart, prevEnd }).catch(() => []),
+    const w = { curStart, curEnd, prevStart, prevEnd };
+
+    await clientRepo.ensureClients(propertyRepo, groupRepo);
+    const [deployRows, properties, clients] = await Promise.all([
+      warehouse.homeMovers(w).catch(() => []),
       propertyRepo.list(),
+      clientRepo.list(),
     ]);
-    const byTable = new Map(
-      properties.filter((p) => p.included).map((p) => [p.sanitizedTableName, p]),
-    );
-    const movers = rows.flatMap((r) => {
+    const tracked = properties.filter((p) => p.included);
+
+    // Cross-region native properties aren't in the deploy-region wildcard — query each region and
+    // merge (SPEC §12 portfolio merge). Group cross-region native views by region.
+    const deploy = warehouse.location.toUpperCase();
+    const byRegion = new Map<string, string[]>();
+    for (const p of tracked) {
+      if (
+        p.source === 'native_export' &&
+        p.exportLocation &&
+        p.exportLocation.toUpperCase() !== deploy
+      ) {
+        const list = byRegion.get(p.exportLocation) ?? [];
+        list.push(p.sanitizedTableName);
+        byRegion.set(p.exportLocation, list);
+      }
+    }
+    const nativeRows = (
+      await Promise.all(
+        [...byRegion.entries()].map(([region, views]) =>
+          warehouse.nativeRegionMovers(region, views, w).catch(() => []),
+        ),
+      )
+    ).flat();
+
+    // Per-property clicks → aggregate to the owning client.
+    const byTable = new Map(tracked.map((p) => [p.sanitizedTableName, p]));
+    const clientName = new Map(clients.map((c) => [c.id, c.name]));
+    const agg = new Map<string, { clicks: number; prevClicks: number }>();
+    for (const r of [...deployRows, ...nativeRows]) {
       const p = byTable.get(r.sourceTable);
-      if (!p) return [];
-      const delta = r.clicks - r.prevClicks;
-      return [
-        {
-          type: 'property' as const,
-          id: p.id,
-          name: p.siteUrl,
-          clicks: r.clicks,
-          prevClicks: r.prevClicks,
-          delta,
-          deltaPct: r.prevClicks > 0 ? (delta / r.prevClicks) * 100 : null,
-        },
-      ];
+      if (!p?.clientId) continue;
+      const a = agg.get(p.clientId) ?? { clicks: 0, prevClicks: 0 };
+      a.clicks += r.clicks;
+      a.prevClicks += r.prevClicks;
+      agg.set(p.clientId, a);
+    }
+    const movers = [...agg.entries()].map(([clientId, a]) => {
+      const delta = a.clicks - a.prevClicks;
+      return {
+        type: 'client' as const,
+        id: clientId,
+        name: clientName.get(clientId) ?? clientId,
+        clicks: a.clicks,
+        prevClicks: a.prevClicks,
+        delta,
+        deltaPct: a.prevClicks > 0 ? (delta / a.prevClicks) * 100 : null,
+      };
     });
-    return { window: { curStart, curEnd, prevStart, prevEnd }, movers };
+    return { window: w, movers };
   });
 
   app.get('/api/quota', async () => {
