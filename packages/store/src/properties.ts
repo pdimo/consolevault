@@ -112,9 +112,9 @@ export function mergeDiscoveredProperty(
     siteUrl: d.siteUrl,
     propertyType: d.propertyType,
     sanitizedTableName: d.sanitizedTableName,
-    // Native-export properties are already present (no collection cost) → tracked by default.
+    // Native-export properties are read-only imports (no collection cost) → ALWAYS tracked/shown.
     // API properties are opt-in per SPEC §7.1 (web-only, others off) → default excluded.
-    included: existing?.included ?? isNative,
+    included: isNative ? true : (existing?.included ?? false),
     accountIds,
     preferredAccountId: existing?.preferredAccountId ?? d.accountId,
     config: existing?.config ?? (isNative ? NATIVE_EXPORT_CONFIG : DEFAULT_COLLECTION_CONFIG),

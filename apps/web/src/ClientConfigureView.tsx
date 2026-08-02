@@ -1,34 +1,40 @@
 /**
- * ClientConfigureView — the "Configure" tab for a Client (IA v2): rename, client-level brand terms
- * (used by the brand/non-brand segment across all its properties), and the member-property list
- * (each links to its own collection/config). Per-property collection settings live on the property.
+ * ClientConfigureView — the "Configure" tab for a Client (IA v2): rename, client-level brand terms,
+ * and MANAGE which properties the client owns. Add a property to turn a single property into a
+ * rollup; remove one (it becomes its own client); delete the client (its properties split back out).
  */
 
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import type { Property } from '@consolevault/types';
 import { api } from './api';
-import { useToast } from './components/feedback';
-import { Badge, Button, Card, Field, Spinner, TextInput } from './components/ui';
+import { useConfirm, useToast } from './components/feedback';
+import { Badge, Button, Card, Field, Select, Spinner, TextInput } from './components/ui';
 
 type Member = { id: string; siteUrl: string; propertyType: string; source: string };
 
 export default function ClientConfigureView() {
   const { id = '' } = useParams();
   const toast = useToast();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [allProps, setAllProps] = useState<Property[]>([]);
+  const [addId, setAddId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
 
+  const load = async () => {
+    const [detail, props] = await Promise.all([api.clientDetail(id), api.listProperties()]);
+    setName(detail.name);
+    setBrand((detail.brandTerms ?? []).join(', '));
+    setMembers(detail.properties);
+    setAllProps(props);
+  };
   useEffect(() => {
-    api
-      .clientDetail(id)
-      .then((d) => {
-        setName(d.name);
-        setBrand((d.brandTerms ?? []).join(', '));
-        setMembers(d.properties);
-      })
-      .catch(() => setMembers([]));
+    load().catch(() => setMembers([]));
   }, [id]);
 
   const save = async () => {
@@ -49,6 +55,50 @@ export default function ClientConfigureView() {
     }
   };
 
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      toast(ok, 'success');
+    } catch (e) {
+      toast(String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addProperty = () => {
+    if (!addId) return;
+    void run(async () => {
+      await api.patchProperty(addId, { clientId: id });
+      setAddId('');
+    }, 'Property added');
+  };
+
+  const removeMember = (m: Member) =>
+    void run(() => api.detachProperty(m.id), `${m.siteUrl} moved to its own client`);
+
+  const remove = async () => {
+    if (
+      await confirm({
+        title: `Delete this client?`,
+        message:
+          'Its properties are split back into their own single-property clients (no data is deleted).',
+        confirmLabel: 'Delete',
+        danger: true,
+      })
+    ) {
+      try {
+        await api.deleteClient(id);
+        toast('Client deleted', 'success');
+        navigate('/clients');
+      } catch (e) {
+        toast(String(e), 'error');
+      }
+    }
+  };
+
   if (!members) {
     return (
       <div className="grid place-items-center py-16 text-muted">
@@ -57,14 +107,22 @@ export default function ClientConfigureView() {
     );
   }
 
+  const memberIds = new Set(members.map((m) => m.id));
+  const available = allProps.filter((p) => p.included && !memberIds.has(p.id));
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Card
         title="Client"
         actions={
-          <Button variant="primary" loading={saving} onClick={() => void save()}>
-            Save
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => void remove()}>
+              Delete
+            </Button>
+            <Button variant="primary" loading={saving} onClick={() => void save()}>
+              Save
+            </Button>
+          </div>
         }
       >
         <div className="flex flex-col gap-4">
@@ -89,25 +147,39 @@ export default function ClientConfigureView() {
 
       <Card title={`Properties (${members.length})`}>
         <p className="mb-3 text-sm text-muted">
-          The sites this client owns. Collection settings live on each property; reassign a property
-          to another client from{' '}
-          <Link to="/properties" className="text-accent">
-            Properties
-          </Link>
-          .
+          The sites this client owns. Add a property to make this a <strong>rollup</strong>; remove
+          one and it becomes its own client. Collection settings live on each property.
         </p>
+
+        <div className="mb-3 flex items-end gap-2">
+          <Field label="Add a property">
+            <Select
+              value={addId}
+              onChange={(e) => setAddId(e.target.value)}
+              className="w-full max-w-xs"
+            >
+              <option value="">Select a property…</option>
+              {available.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.siteUrl}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Button disabled={busy || !addId} onClick={addProperty}>
+            Add
+          </Button>
+        </div>
+
         <ul className="flex flex-col divide-y divide-line">
           {members.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-2 py-2">
               <span className="break-all text-sm">{m.siteUrl}</span>
               <span className="flex items-center gap-2">
                 {m.source === 'native_export' && <Badge tone="ok">export</Badge>}
-                <Link
-                  to={`/clients/property/${m.id}/configure`}
-                  className="whitespace-nowrap text-sm text-accent hover:underline"
-                >
-                  Configure →
-                </Link>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeMember(m)}>
+                  Remove
+                </Button>
               </span>
             </li>
           ))}

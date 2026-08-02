@@ -209,6 +209,8 @@ export interface DashboardListItem {
   brandTerms?: string[];
   /** For `client`: how many properties it owns (UI count). */
   propertyCount?: number;
+  /** For `client`: what kind of setup it is (drives the UI chip). */
+  kind?: 'property' | 'rollup' | 'export';
 }
 
 /** Shared filter/segmentation state for a dashboard (encoded in the URL). */

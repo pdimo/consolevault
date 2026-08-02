@@ -124,8 +124,10 @@ export default function ClientWorkspace() {
           </Select>
         )}
 
-        {type === 'client' && members.length > 1 && (
-          <Badge tone="accent">{members.length} properties</Badge>
+        {current?.kind === 'export' && <Badge tone="ok">BigQuery export</Badge>}
+        {current?.kind === 'rollup' && <Badge tone="accent">Rollup · {members.length}</Badge>}
+        {current?.kind === 'property' && type === 'client' && (
+          <Badge tone="neutral">Property</Badge>
         )}
         {status && <Badge tone={status.tone}>{status.label}</Badge>}
       </div>

@@ -240,6 +240,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, propertyIds }),
     }),
+  deleteClient: (id: string) => http<void>(`/api/clients/${id}`, { method: 'DELETE' }),
+  detachProperty: (propertyId: string) =>
+    http<{ clientId: string }>(`/api/properties/${propertyId}/detach`, { method: 'POST' }),
   dashboardKpis: (type: string, id: string, qs: string) =>
     isDemoOn() && id === DEMO_ID
       ? Promise.resolve(demoKpis())

@@ -57,6 +57,29 @@ export default function Properties() {
     accounts.find((a) => a.id === id)?.displayName ?? id.slice(0, 8);
   const clientName = (id?: string) => clients.find((c) => c.id === id)?.name;
 
+  // Bulk-assign the selected properties to one client — an existing one or a new rollup.
+  const bulkAssign = async (value: string) => {
+    const ids = [...selected];
+    if (ids.length === 0 || !value) return;
+    try {
+      if (value === '__new') {
+        const name = window.prompt('New client name?')?.trim();
+        if (!name) return;
+        await api.createClient(name, ids);
+      } else {
+        await Promise.all(ids.map((pid) => api.patchProperty(pid, { clientId: value })));
+      }
+      setSelected(new Set());
+      await load();
+      toast(
+        `Assigned ${ids.length} propert${ids.length === 1 ? 'y' : 'ies'} to a client`,
+        'success',
+      );
+    } catch (e) {
+      toast(String(e), 'error');
+    }
+  };
+
   // Reassign a property to another client (or create a new client for it).
   const assign = async (p: Property, value: string) => {
     try {
@@ -225,6 +248,20 @@ export default function Properties() {
           <Button size="sm" onClick={() => void bulk(false)}>
             Stop tracking
           </Button>
+          <Select
+            value=""
+            onChange={(e) => void bulkAssign(e.target.value)}
+            className="text-sm"
+            aria-label="Assign selected to client"
+          >
+            <option value="">Assign to client…</option>
+            <option value="__new">＋ New client (rollup)</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
           <button className="text-muted hover:text-fg" onClick={() => setSelected(new Set())}>
             Clear
           </button>

@@ -68,12 +68,18 @@ export default function Clients() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c) => {
             const n = c.propertyCount ?? 1;
+            const chip =
+              c.kind === 'export'
+                ? { label: 'BigQuery export', tone: 'ok' as const }
+                : c.kind === 'rollup'
+                  ? { label: `Rollup · ${n}`, tone: 'accent' as const }
+                  : { label: 'Property', tone: 'neutral' as const };
             return (
               <Link key={`${c.type}:${c.id}`} to={`/clients/${c.type}/${c.id}/report`}>
                 <Card className="h-full transition-colors hover:border-accent">
                   <div className="flex items-start justify-between gap-2">
                     <p className="break-all font-medium">{c.name}</p>
-                    {n > 1 && <Badge tone="accent">{n} properties</Badge>}
+                    <Badge tone={chip.tone}>{chip.label}</Badge>
                   </div>
                   <p className="mt-3 text-sm text-accent">Open report →</p>
                 </Card>

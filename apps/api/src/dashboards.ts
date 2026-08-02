@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   cacheKey,
   canonicalQs,
+  clientNameFromSiteUrl,
   DashboardCache,
   DashboardService,
   SavedFilterRepository,
@@ -77,6 +78,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
         id: c.id,
         name: c.name,
         propertyCount: c.propertyCount,
+        kind: c.kind,
         ...(c.brandTerms?.length ? { brandTerms: c.brandTerms } : {}),
       }));
   });
@@ -110,7 +112,7 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     return clientRepo.get(id);
   });
 
-  // Create a client (optionally seeded with member properties).
+  // Create a client (optionally seeded with member properties) — e.g. a rollup across N properties.
   app.post('/api/clients', async (req, reply) => {
     const body = (req.body ?? {}) as { name?: string; propertyIds?: string[] };
     if (!body.name?.trim()) throw new HttpError(400, 'name is required');
@@ -119,6 +121,33 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     for (const pid of body.propertyIds ?? []) await propertyRepo.setClient(pid, id);
     reply.code(201);
     return clientRepo.get(id);
+  });
+
+  // Detach a property from its client into its own single-property client (remove from a rollup).
+  async function detachToOwnClient(propertyId: string): Promise<string> {
+    const p = await propertyRepo.get(propertyId);
+    if (!p) throw new HttpError(404, 'Property not found');
+    const id = `c_${randomUUID().slice(0, 12)}`;
+    await clientRepo.create({
+      id,
+      name: clientNameFromSiteUrl(p.siteUrl),
+      createdAt: new Date().toISOString(),
+    });
+    await propertyRepo.setClient(propertyId, id);
+    return id;
+  }
+  app.post('/api/properties/:id/detach', async (req) => {
+    const { id } = req.params as { id: string };
+    return { clientId: await detachToOwnClient(id) };
+  });
+
+  // Delete a client — its properties are split back into their own single-property clients.
+  app.delete('/api/clients/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const members = await propertyRepo.listByClient(id);
+    for (const m of members) await detachToOwnClient(m.id);
+    await clientRepo.delete(id);
+    reply.code(204);
   });
 
   // One cached endpoint per report.
