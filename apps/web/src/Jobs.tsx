@@ -38,7 +38,10 @@ export default function Jobs() {
   const [running, setRunning] = useState(false);
 
   const loadTasks = (s: TaskStatus | 'all') =>
-    api.tasks(s === 'all' ? {} : { status: s }).then(setTasks);
+    api
+      .tasks(s === 'all' ? {} : { status: s })
+      .then(setTasks)
+      .catch(() => toast('Could not load jobs', 'error'));
 
   useEffect(() => {
     void loadTasks(status);

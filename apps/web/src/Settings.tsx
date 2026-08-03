@@ -12,8 +12,11 @@ export default function Settings() {
   const [demo, setDemoState] = useState(isDemoOn());
 
   useEffect(() => {
-    void api.getSettings().then(setSettings);
-  }, []);
+    void api
+      .getSettings()
+      .then(setSettings)
+      .catch(() => toast('Could not load settings', 'error'));
+  }, [toast]);
 
   if (!settings) {
     return (

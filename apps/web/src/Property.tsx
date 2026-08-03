@@ -53,16 +53,19 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
   const [running, setRunning] = useState(false);
 
   useEffect(() => {
-    void api.listProperties().then((all) => {
-      const p = all.find((x) => x.id === id) ?? null;
-      setProperty(p);
-      if (p) {
-        setConfig(p.config);
-        setIncluded(p.included);
-        setDashboardEnabled(p.dashboardEnabled ?? false);
-        setBrandTerms((p.brandTerms ?? []).join(', '));
-      }
-    });
+    void api
+      .listProperties()
+      .then((all) => {
+        const p = all.find((x) => x.id === id) ?? null;
+        setProperty(p);
+        if (p) {
+          setConfig(p.config);
+          setIncluded(p.included);
+          setDashboardEnabled(p.dashboardEnabled ?? false);
+          setBrandTerms((p.brandTerms ?? []).join(', '));
+        }
+      })
+      .catch(() => toast('Could not load property', 'error'));
     void api
       .coverage(id)
       .then(setCoverage)
@@ -71,7 +74,7 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
       .anomaly(id)
       .then((a) => setAnomaly(a.anomalyPct))
       .catch(() => undefined);
-  }, [id]);
+  }, [id, toast]);
 
   if (!property || !config) {
     return (

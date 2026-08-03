@@ -418,6 +418,15 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
   }, [filters, brandTerms, hasBrand]);
 
   useEffect(() => {
+    // Guard against stale responses: a slower request from a previous (type/id/qs) must not
+    // overwrite state belonging to the current one. `ignore` flips on cleanup, and every setter
+    // is wrapped so late resolutions become no-ops.
+    let ignore = false;
+    const g =
+      <T,>(setter: (v: T) => void) =>
+      (v: T) => {
+        if (!ignore) setter(v);
+      };
     setKpis(null);
     setTs(null);
     setTsCompare(null);
@@ -437,58 +446,61 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
       api.dashboardReport<T>(type, id, report, qs + extra);
     api
       .dashboardKpis(type, id, qs)
-      .then(setKpis)
-      .catch(() => setKpis({ current: null, previous: null }));
+      .then(g(setKpis))
+      .catch(() => g(setKpis)({ current: null, previous: null }));
     api
       .dashboardTimeseries(type, id, qs)
-      .then(setTs)
-      .catch(() => setTs([]));
+      .then(g(setTs))
+      .catch(() => g(setTs)([]));
     if (filters.compareMode !== 'none') {
       r<TsPoint[]>('timeseries', '&series=compare')
-        .then(setTsCompare)
-        .catch(() => setTsCompare([]));
+        .then(g(setTsCompare))
+        .catch(() => g(setTsCompare)([]));
     } else {
       setTsCompare([]);
     }
     r<EntityRow[]>('top-queries')
-      .then(setTopQ)
-      .catch(() => setTopQ([]));
+      .then(g(setTopQ))
+      .catch(() => g(setTopQ)([]));
     r<EntityRow[]>('top-pages')
-      .then(setTopP)
-      .catch(() => setTopP([]));
+      .then(g(setTopP))
+      .catch(() => g(setTopP)([]));
     r<EntityRow[]>('breakdown', '&dim=device')
-      .then(setDevice)
-      .catch(() => setDevice([]));
+      .then(g(setDevice))
+      .catch(() => g(setDevice)([]));
     r<EntityRow[]>('breakdown', '&dim=country')
-      .then(setCountry)
-      .catch(() => setCountry([]));
+      .then(g(setCountry))
+      .catch(() => g(setCountry)([]));
     r<BucketRow[]>('position-buckets')
-      .then(setBuckets)
-      .catch(() => setBuckets([]));
+      .then(g(setBuckets))
+      .catch(() => g(setBuckets)([]));
     r<ScatterRow[]>('ctr-scatter')
-      .then(setScatter)
-      .catch(() => setScatter([]));
+      .then(g(setScatter))
+      .catch(() => g(setScatter)([]));
     r<MoverRow[]>('movers')
-      .then(setMovers)
-      .catch(() => setMovers([]));
+      .then(g(setMovers))
+      .catch(() => g(setMovers)([]));
     r<MoverRow[]>('movers', '&dim=page')
-      .then(setMoversPages)
-      .catch(() => setMoversPages([]));
+      .then(g(setMoversPages))
+      .catch(() => g(setMoversPages)([]));
     r<GroupRow[]>('grouped-entities', '&kind=topic')
-      .then(setTopicGroups)
-      .catch(() => setTopicGroups([]));
+      .then(g(setTopicGroups))
+      .catch(() => g(setTopicGroups)([]));
     r<GroupRow[]>('grouped-entities', '&kind=content')
-      .then(setContentGroups)
-      .catch(() => setContentGroups([]));
+      .then(g(setContentGroups))
+      .catch(() => g(setContentGroups)([]));
     if (hasBrand) {
       r<BrandSplitRow[]>('brand-split')
-        .then(setBrandSplit)
-        .catch(() => setBrandSplit([]));
+        .then(g(setBrandSplit))
+        .catch(() => g(setBrandSplit)([]));
       r<BrandTrendPoint[]>('brand-timeseries')
-        .then(setBrandTrend)
-        .catch(() => setBrandTrend([]));
+        .then(g(setBrandTrend))
+        .catch(() => g(setBrandTrend)([]));
     }
-  }, [type, id, qs, hasBrand]);
+    return () => {
+      ignore = true;
+    };
+  }, [type, id, qs, hasBrand, filters.compareMode]);
 
   const current = kpis?.current;
   const previous = kpis?.previous;
