@@ -10,3 +10,12 @@ terraform
 terraform.tfvars
 **/*.log
 .DS_Store
+
+# Secrets — never bake into an image (defense-in-depth; these are gitignored too)
+**/.env
+**/.env.*
+**/*-key.json
+**/*service-account*.json
+**/client_secret*.json
+**/*oauth*client*.json
+credentials.json
