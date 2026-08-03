@@ -207,7 +207,7 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
         input.dataDate,
         accountId,
         status,
-        1,
+        retryCount + 1,
         {
           rowCount: 0,
           apiCalls,
@@ -296,7 +296,7 @@ export async function collectTask(input: CollectInput, retryCount = 0): Promise<
       input.dataDate,
       accountId,
       status,
-      1,
+      retryCount + 1,
       {
         rowCount: rowsLoaded,
         apiCalls,

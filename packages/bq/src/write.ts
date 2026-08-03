@@ -240,7 +240,7 @@ export class Warehouse {
       query: `SELECT FORMAT_DATE('%Y-%m-%d', DATE(logged_at, 'America/Los_Angeles')) AS day,
           COUNT(DISTINCT task_id) AS tasks, IFNULL(SUM(row_count), 0) AS n_rows
         FROM ${this.tableRef(DATASETS.taskLogs, 'attempts')}
-        WHERE logged_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${days} DAY)
+        WHERE logged_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${Math.max(1, Math.floor(Number(days)))} DAY)
         GROUP BY day ORDER BY day`,
       location: this.cfg.location,
     });
