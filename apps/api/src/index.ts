@@ -26,7 +26,11 @@ const app = Fastify({ logger: true, trustProxy: true });
 app.setErrorHandler((err: FastifyError, _req, reply) => {
   const status = err instanceof HttpError ? err.status : (err.statusCode ?? 500);
   app.log.error(err);
-  void reply.code(status).send({ error: err.message });
+  // Only surface messages we chose to expose (HttpError / explicit 4xx). For unexpected 500s,
+  // log the detail but return a generic message so library internals don't leak to callers
+  // (notably the unauthenticated /api/auth/* routes).
+  const expose = err instanceof HttpError || status < 500;
+  void reply.code(status).send({ error: expose ? err.message : 'Internal error' });
 });
 
 await app.register(fastifyCookie);
