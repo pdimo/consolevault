@@ -12,6 +12,10 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # Code scanning (SARIF upload) is only available on public repos (or with GitHub
+    # Advanced Security). While the repo is private this job would fail on upload, so we
+    # skip it — it auto-activates the moment the repo becomes public.
+    if: ${{ github.event.repository.visibility == 'public' }}
     permissions:
       security-events: write
       contents: read
@@ -21,7 +25,7 @@ jobs:
       matrix:
         language: [javascript-typescript]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: github/codeql-action/init@v3
         with:
