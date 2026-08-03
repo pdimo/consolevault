@@ -46,17 +46,58 @@ ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/
 info "gcloud account: ${ACCOUNT}"
 
 # --- Config (terraform.tfvars) ----------------------------------------------
+# Prompt-free by default: auto-detect the project + admin email from gcloud, apply
+# sensible defaults, and show ONE summary to confirm. Override any value up front with
+# an env var (CV_PROJECT_ID / CV_BQ_LOCATION / CV_REGION / CV_ADMIN_EMAILS /
+# CV_BILLING_ACCOUNT) or by typing 'edit' at the confirm prompt. CV_YES=1 skips the
+# confirm entirely (fully non-interactive, for CI/automation).
 TFVARS="terraform/terraform.tfvars"
-if [ ! -f "${TFVARS}" ]; then
-  bold "No terraform/terraform.tfvars yet — let's create one."
-  read -r -p "  GCP project id: " PROJECT_ID
-  [ -n "${PROJECT_ID}" ] || die "project id is required."
-  read -r -p "  BigQuery + Firestore location — PERMANENT, cannot change later [US]: " BQ_LOCATION; BQ_LOCATION="${BQ_LOCATION:-US}"
-  read -r -p "  Cloud Run region [us-central1]: " REGION; REGION="${REGION:-us-central1}"
-  read -r -p "  Admin email(s) for UI sign-in (comma-separated): " ADMINS
-  read -r -p "  Billing account id for the budget (blank to skip): " BILLING
-  STATE_BUCKET="${PROJECT_ID}-tfstate"
+if [ -f "${TFVARS}" ]; then
+  info "Using existing ${TFVARS} (delete it to reconfigure)."
+else
+  PROJECT_ID="${CV_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
+  ADMINS="${CV_ADMIN_EMAILS:-$(gcloud config get-value account 2>/dev/null)}"
+  REGION="${CV_REGION:-us-central1}"
+  BQ_LOCATION="${CV_BQ_LOCATION:-US}"
+  BILLING="${CV_BILLING_ACCOUNT:-}"
+  # gcloud prints "(unset)" for an unset value — treat that as empty.
+  [ "${PROJECT_ID}" = "(unset)" ] && PROJECT_ID=""
+  [ "${ADMINS}" = "(unset)" ] && ADMINS=""
 
+  prompt_config() {
+    local x
+    read -r -p "  GCP project id [${PROJECT_ID}]: " x; PROJECT_ID="${x:-$PROJECT_ID}"
+    read -r -p "  BigQuery + Firestore location — PERMANENT [${BQ_LOCATION}]: " x; BQ_LOCATION="${x:-$BQ_LOCATION}"
+    read -r -p "  Cloud Run region [${REGION}]: " x; REGION="${x:-$REGION}"
+    read -r -p "  Admin email(s), comma-separated [${ADMINS}]: " x; ADMINS="${x:-$ADMINS}"
+    read -r -p "  Billing account id (blank to skip the budget) [${BILLING}]: " x; BILLING="${x:-$BILLING}"
+  }
+
+  show_summary() {
+    bold "Deploy settings"
+    info "project id    : ${PROJECT_ID:-<none — run: gcloud config set project ID>}"
+    info "bq_location   : ${BQ_LOCATION}   (PERMANENT — cannot change later)"
+    info "region        : ${REGION}"
+    info "admin email(s): ${ADMINS:-<none>}"
+    info "billing acct  : ${BILLING:-<skip budget>}"
+  }
+
+  if [ "${CV_YES:-}" != "1" ]; then
+    while :; do
+      show_summary
+      printf '  Press Enter to deploy, or type "edit" to change any value: '
+      read -r ans || ans=""
+      case "${ans}" in
+        "" | y | Y | yes) break ;;
+        edit | e | E) prompt_config ;;
+        *) info "…press Enter to accept, or type 'edit'." ;;
+      esac
+    done
+  fi
+
+  [ -n "${PROJECT_ID}" ] || die "No project set. Run: gcloud config set project PROJECT_ID  (or set CV_PROJECT_ID), then re-run ./setup.sh"
+  [ -n "${ADMINS}" ] || die "No admin email. Sign in with 'gcloud auth login' (or set CV_ADMIN_EMAILS), then re-run ./setup.sh"
+  STATE_BUCKET="${PROJECT_ID}-tfstate"
   ADMIN_JSON="$(printf '%s' "${ADMINS}" | awk -F, '{for(i=1;i<=NF;i++){gsub(/^ +| +$/,"",$i);printf "%s\"%s\"",(i>1?", ":""),$i}}')"
   cat > "${TFVARS}" <<EOF
 project_id   = "${PROJECT_ID}"
@@ -67,8 +108,6 @@ admin_emails = [${ADMIN_JSON}]
 billing_account = "${BILLING}"
 EOF
   info "Wrote ${TFVARS}"
-else
-  info "Using existing ${TFVARS}"
 fi
 
 PROJECT_ID="$(awk -F'"' '/project_id/{print $2}' "${TFVARS}")"
