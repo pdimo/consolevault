@@ -18,7 +18,7 @@
     "@consolevault/gsc": "workspace:*",
     "@consolevault/store": "workspace:*",
     "@consolevault/types": "workspace:*",
-    "@fastify/cookie": "^11.0.0",
+    "@fastify/cookie": "^11.1.2",
     "@fastify/static": "^8.0.0",
     "@google-cloud/tasks": "^5.5.0",
     "@google-cloud/workflows": "^4.0.0",
