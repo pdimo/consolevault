@@ -48,10 +48,12 @@ them — and `gcloud auth login` + `gcloud auth application-default login` done)
 ./setup.sh
 ```
 
-It prompts for your project id, location, admin email(s) and (optional) billing account, then
-stands up everything and deploys the app. Re-running is safe. Or click **Open in Cloud Shell**
-above for a guided walkthrough. For the manual path and per-scenario detail see
-**[docs/DEPLOY.md](./docs/DEPLOY.md)**.
+It **auto-detects your project and admin email** from `gcloud`, shows a one-screen summary, and
+asks you to confirm once — press **Enter** to deploy, or type `edit` to change anything (region,
+extra admins, a billing account for the budget). The only permanent choice is `bq_location`
+(BigQuery + Firestore), which defaults to `US`. Re-running is safe. Or click **Open in Cloud
+Shell** above for the same thing as a guided, click-through walkthrough. For the manual path and
+per-scenario detail see **[docs/DEPLOY.md](./docs/DEPLOY.md)**.
 
 > `bq_location` (BigQuery + Firestore) is **permanent** and cannot be changed later — choose once.
 

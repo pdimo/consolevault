@@ -20,9 +20,12 @@ one-command `setup.sh`, or the manual steps it automates.
 ./setup.sh
 ```
 
-It will: preflight your tools/auth → write `terraform/terraform.tfvars` (prompting for project,
-location, region, admin email(s), and an optional billing account) → set the ADC quota project
-(needed by the billing-budgets API) → create the versioned Terraform **state bucket** if missing →
+It will: preflight your tools/auth → write `terraform/terraform.tfvars` (**auto-detecting** the
+project and admin email from `gcloud`, with sensible defaults and a single confirm — override any
+value with `CV_PROJECT_ID` / `CV_BQ_LOCATION` / `CV_REGION` / `CV_ADMIN_EMAILS` /
+`CV_BILLING_ACCOUNT`, by typing `edit` at the prompt, or run fully non-interactive with `CV_YES=1`)
+→ set the ADC quota project (needed by the billing-budgets API) → create the versioned Terraform
+**state bucket** if missing →
 `terraform init` → `terraform apply` (bootstrap: APIs, Firestore, BigQuery datasets, 3
 least-privilege service accounts, Artifact Registry, Cloud Run, Tasks/Workflows/Scheduler,
 Monitoring alerts, billing budget) → build & push the `api` and `workers` images → `terraform
