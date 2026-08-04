@@ -7,7 +7,9 @@ one-command `setup.sh`, or the manual steps it automates.
 
 - A GCP project with **billing enabled** and you as Owner (or equivalent).
 - `gcloud` CLI and `terraform` ≥ 1.5. Images build in **Cloud Build** — no local Docker or Node
-  needed. Easiest of all (and required on Windows): **Cloud Shell**, which has both preinstalled.
+  needed. Easiest of all (and required on Windows): **Cloud Shell**, which has `gcloud` preinstalled
+  — and `setup.sh` **auto-installs Terraform** there (Cloud Shell no longer ships it), into
+  `~/.consolevault/bin`. Pin a version with `CV_TF_VERSION` if you need a specific one.
 - Authenticated:
   ```bash
   gcloud auth login

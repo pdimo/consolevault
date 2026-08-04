@@ -47,18 +47,28 @@ already installed. You don't install anything on your computer.
 > simplest.
 
 1. On the [ConsoleVault repo](https://github.com/pdimo/consolevault), click the **Open in Cloud
-   Shell** button. A terminal opens with the code already downloaded.
-2. Run:
+   Shell** button. A browser terminal opens with the code already downloaded (in
+   `~/cloudshell_open/consolevault`). If a guided panel opens on the right, you can follow that
+   instead — but these four commands are all it does.
+2. **Point it at your project** (use the project ID from “Before you start”):
+   ```bash
+   gcloud config set project YOUR_PROJECT_ID
+   ```
+3. **Authorize the deploy** (a link appears — open it, allow, paste the code back if asked):
+   ```bash
+   gcloud auth application-default login
+   gcloud auth application-default set-quota-project "$(gcloud config get-value project)"
+   ```
+4. **Deploy:**
    ```bash
    ./setup.sh
    ```
-3. Answer the handful of prompts:
-   - **Project ID** — from the step above.
-   - **Location** — where your data lives (e.g. `US`, `EU`, `australia-southeast1`).
-     ⚠️ **This is permanent** — it cannot be changed later, so pick the region closest to you.
-   - **Region** — for the app itself (e.g. `us-central1`); the default is fine.
-   - **Admin email(s)** — the Google account(s) allowed to sign in.
-   - **Billing account** — optional, enables the budget alert (press Enter to skip).
+   It **auto-detects your project and admin email** and prints a short summary, then waits.
+   - Press **Enter** to deploy with those settings, or type **`edit`** to change anything.
+   - The one thing to decide is **Location** (`bq_location`) — where your data lives (`US`, `EU`,
+     `australia-southeast1`, …). ⚠️ **This is permanent.** It defaults to `US`; type `edit` to change it.
+   - _First run in Cloud Shell?_ `setup.sh` **installs Terraform automatically** (Cloud Shell no
+     longer ships it) — that's normal, just let it run.
 
 The script does the rest: it builds and deploys everything and, after ~10–15 minutes, prints your
 **Management UI** link. Leave the tab open.

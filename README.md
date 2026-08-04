@@ -41,8 +41,9 @@ without budgeting for CASA.
 **New to Google Cloud?** Start with the [**30-minute Getting Started guide**](./docs/GETTING-STARTED.md)
 — non-technical, copy-paste, and browser-only via Cloud Shell. The short version:
 
-**One command** (with `gcloud` + `terraform` installed — or just use **Cloud Shell**, which has
-them — and `gcloud auth login` + `gcloud auth application-default login` done):
+**One command** (needs `gcloud` + `terraform`, and `gcloud auth login` +
+`gcloud auth application-default login` done — or just use **Cloud Shell**, which has `gcloud`;
+`setup.sh` auto-installs Terraform there since Cloud Shell no longer ships it):
 
 ```bash
 ./setup.sh

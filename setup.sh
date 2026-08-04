@@ -15,6 +15,44 @@ bold() { printf '\033[1m%s\033[0m\n' "$1"; }
 info() { printf '  %s\n' "$1"; }
 die() { printf '\033[31mERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
+# Terraform is NO LONGER preinstalled in Cloud Shell (Google removed it). Worse, Cloud Shell ships
+# a shim named `terraform` that just prints install hints and exits 0 — which would make our applies
+# silently no-op. So verify a REAL terraform (its `version` output starts with "Terraform v"), and
+# if it's missing/shimmed, install a pinned copy into the home dir and prepend it to PATH.
+have_real_terraform() { terraform version 2>/dev/null | grep -qiE '^Terraform v'; }
+ensure_terraform() {
+  if have_real_terraform; then
+    info "terraform: $(terraform version 2>/dev/null | head -1)"
+    return 0
+  fi
+  local ver os arch tmp bindir="${HOME}/.consolevault/bin"
+  ver="${CV_TF_VERSION:-}"
+  if [ -z "${ver}" ]; then
+    ver="$(curl -fsSL https://checkpoint-api.hashicorp.com/v1/check/terraform 2>/dev/null \
+      | grep -o '"current_version":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    [ -n "${ver}" ] || ver="1.9.8"
+  fi
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$(uname -m)" in
+    x86_64 | amd64) arch=amd64 ;;
+    arm64 | aarch64) arch=arm64 ;;
+    *) die "Unsupported CPU architecture $(uname -m). Install Terraform >= 1.5 manually and re-run." ;;
+  esac
+  command -v curl >/dev/null || die "curl not found; can't auto-install Terraform. Install it manually."
+  command -v unzip >/dev/null || die "unzip not found; can't auto-install Terraform. Install it manually."
+  bold "Installing Terraform ${ver} (Cloud Shell no longer ships it)…"
+  mkdir -p "${bindir}"
+  tmp="$(mktemp -d)"
+  curl -fsSL -o "${tmp}/terraform.zip" \
+    "https://releases.hashicorp.com/terraform/${ver}/terraform_${ver}_${os}_${arch}.zip" \
+    || die "Failed to download Terraform ${ver}."
+  unzip -oq "${tmp}/terraform.zip" -d "${bindir}" || die "Failed to unpack Terraform."
+  rm -rf "${tmp}"
+  export PATH="${bindir}:${PATH}"
+  have_real_terraform || die "Terraform still not runnable after install."
+  info "Installed terraform → ${bindir} ($(terraform version 2>/dev/null | head -1))"
+}
+
 # terraform apply: interactive first (you review the plan), then auto-retry transient failures.
 # Fresh projects have API + service-agent propagation lag (e.g. the Workflows service agent), so a
 # first bootstrap can need a retry even after the APIs are enabled.
@@ -37,9 +75,9 @@ bold "ConsoleVault setup"
 
 # --- Preflight ---------------------------------------------------------------
 # Only gcloud + terraform are needed — images build in Cloud Build (no local Docker or Node).
-# Easiest of all, especially on Windows: run this in Cloud Shell, which has both preinstalled.
+# Cloud Shell ships gcloud; Terraform was removed from Cloud Shell, so ensure_terraform installs it.
 command -v gcloud >/dev/null || die "gcloud CLI not found. Install the Google Cloud SDK, or run this in Cloud Shell."
-command -v terraform >/dev/null || die "terraform not found. Install Terraform >= 1.5, or run this in Cloud Shell."
+ensure_terraform
 
 ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null || true)"
 [ -n "${ACCOUNT}" ] || die "Not authenticated. Run: gcloud auth login && gcloud auth application-default login"
