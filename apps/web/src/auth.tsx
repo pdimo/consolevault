@@ -5,6 +5,7 @@ interface AuthState {
   status: 'loading' | 'authed' | 'anon';
   email?: string;
   googleClientId?: string;
+  passwordLoginEnabled?: boolean;
   collectorServiceAccount?: string;
   exportReaderServiceAccounts?: string[];
   needsSetup?: boolean;
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cfg = await api.config();
       const cfgBits = {
         collectorServiceAccount: cfg.collectorServiceAccount,
+        passwordLoginEnabled: cfg.passwordLoginEnabled,
         needsSetup: cfg.needsSetup,
         redirectUri: cfg.redirectUri,
         jsOrigin: cfg.jsOrigin,

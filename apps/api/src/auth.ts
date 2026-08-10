@@ -3,6 +3,7 @@
  * (except the public ones) requires a signed session cookie issued only to configured admin emails.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { OAuth2Client } from 'google-auth-library';
 import { adminEmails, config, getWebClientConfig } from './deps.js';
@@ -11,6 +12,29 @@ import { HttpError } from './errors.js';
 
 export const SESSION_COOKIE = 'cv_session';
 const SESSION_TTL_SECONDS = 12 * 3600;
+
+/** The bootstrap-generated admin password (injected from Secret Manager), or null if not set. */
+function adminPassword(): string | null {
+  return process.env.ADMIN_PASSWORD || null;
+}
+
+/** Constant-time string compare that tolerates unequal lengths. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+function issueSession(reply: FastifyReply, email: string): void {
+  const session: Session = { email, exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS };
+  reply.setCookie(SESSION_COOKIE, signSession(session, sessionSecret()), {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+}
 
 function sessionSecret(): string {
   const s = process.env.SESSION_SECRET;
@@ -48,9 +72,13 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       googleClientId = null; // Web client not provisioned yet → first-run setup wizard.
     }
     const host = req.hostname;
+    // The app is usable once EITHER a Web OAuth client (Google Sign-In) OR the bootstrap-generated
+    // admin password is configured. Only force the OAuth setup wizard when neither exists.
+    const passwordLoginEnabled = adminPassword() !== null;
     return {
       googleClientId,
-      needsSetup: !googleClientId,
+      passwordLoginEnabled,
+      needsSetup: !googleClientId && !passwordLoginEnabled,
       redirectUri: `https://${host}/api/oauth/callback`,
       jsOrigin: `https://${host}`,
       collectorServiceAccount: `sa-collector@${config.projectId}.iam.gserviceaccount.com`,
@@ -72,17 +100,21 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     if (!email || !adminEmails.includes(email)) {
       throw new HttpError(403, 'Not an authorized admin');
     }
-    const session: Session = {
-      email,
-      exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-    };
-    reply.setCookie(SESSION_COOKIE, signSession(session, sessionSecret()), {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: SESSION_TTL_SECONDS,
-    });
+    issueSession(reply, email);
+    return { email };
+  });
+
+  // Password login (the bootstrap-generated admin credential) — the OAuth-client-free path. The
+  // session is issued for the first configured admin email.
+  app.post('/api/auth/login', async (req, reply) => {
+    const expected = adminPassword();
+    if (!expected) throw new HttpError(404, 'Password login is not enabled');
+    const { password } = (req.body ?? {}) as { password?: string };
+    if (!password || !safeEqual(password, expected)) {
+      throw new HttpError(401, 'Incorrect password');
+    }
+    const email = adminEmails[0] ?? 'admin';
+    issueSession(reply, email);
     return { email };
   });
 

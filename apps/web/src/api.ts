@@ -129,6 +129,7 @@ export const api = {
   config: () =>
     http<{
       googleClientId: string | null;
+      passwordLoginEnabled: boolean;
       needsSetup: boolean;
       redirectUri: string;
       jsOrigin: string;
@@ -140,6 +141,11 @@ export const api = {
     http<{ email: string }>('/api/auth/google', {
       method: 'POST',
       body: JSON.stringify({ idToken }),
+    }),
+  passwordSignIn: (password: string) =>
+    http<{ email: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
     }),
   logout: () => http<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
 

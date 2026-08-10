@@ -147,6 +147,20 @@ if ! ${G} secrets describe session-secret >/dev/null 2>&1; then
 fi
 info "session-secret ready"
 
+# --- Admin password (the OAuth-client-free login) ----------------------------
+# A bootstrap-generated password lets the admin sign in WITHOUT creating a Google OAuth client.
+# Generated once and stored in Secret Manager; printed at the end only when freshly created.
+bold "Admin login password"
+ADMIN_PW=""
+if ${G} secrets describe admin-password >/dev/null 2>&1; then
+  info "already set — retrieve with: gcloud secrets versions access latest --secret=admin-password --project=${PROJECT_ID}"
+else
+  ${G} secrets create admin-password --replication-policy=automatic >/dev/null
+  ADMIN_PW="$(openssl rand -hex 16)"
+  printf '%s' "${ADMIN_PW}" | ${G} secrets versions add admin-password --data-file=- >/dev/null
+  info "generated (shown at the end)"
+fi
+
 # --- Staging bucket ----------------------------------------------------------
 bold "Staging bucket gs://${STAGING_BUCKET}"
 if ! gcloud storage buckets describe "gs://${STAGING_BUCKET}" >/dev/null 2>&1; then
@@ -183,7 +197,7 @@ bold "Deploying api (${API_IMAGE})"
 # api's ADMIN_EMAILS may contain commas → use a custom (##) delimiter for --set-env-vars.
 API_ENV="^##^ADMIN_EMAILS=${ADMINS}##APP_NAME=${APP_NAME}##BILLING_EXPORT_DATASET=billing_export##${COMMON_ENV//,/##}"
 run_deploy "${APP_NAME}-api" --image="${API_IMAGE}" --service-account="${SA_API}" \
-  --allow-unauthenticated --set-env-vars="${API_ENV}" --set-secrets="SESSION_SECRET=session-secret:latest"
+  --allow-unauthenticated --set-env-vars="${API_ENV}" --set-secrets="SESSION_SECRET=session-secret:latest,ADMIN_PASSWORD=admin-password:latest"
 API_URL="$(${G} run services describe "${APP_NAME}-api" --region="${REGION}" --format='value(status.url)')"
 
 # --- Daily orchestration (Workflow + Scheduler) ------------------------------
@@ -212,9 +226,13 @@ echo
 bold "✅ ConsoleVault is deployed."
 info "Management UI: ${API_URL}"
 echo
-bold "Next steps (all in the browser)"
-info "1. Open ${API_URL} and complete the setup wizard."
-info "2. Use the SERVICE-ACCOUNT path (recommended for agencies): add this collector as a user on"
-info "   each Search Console property — no OAuth consent screen needed:"
+if [ -n "${ADMIN_PW}" ]; then
+  bold "Admin password (save it now — shown only once)"
+  info "${ADMIN_PW}"
+  echo
+fi
+bold "Next steps (all in the browser — no OAuth client, no consent screen)"
+info "1. Open ${API_URL} and sign in with the admin password above."
+info "2. Add this collector as a user on each Search Console property you manage:"
 info "     ${SA_COLLECTOR}"
 info "3. Include the properties you want and run the pipeline (Jobs → Run now)."
