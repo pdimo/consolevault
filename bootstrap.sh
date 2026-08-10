@@ -131,8 +131,8 @@ info "firestore ready"
 bold "Session secret"
 if ! ${G} secrets describe session-secret >/dev/null 2>&1; then
   ${G} secrets create session-secret --replication-policy=automatic >/dev/null
-  # 48-char url-safe secret; never printed.
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 | ${G} secrets versions add session-secret --data-file=- >/dev/null
+  # 64-char hex secret; never printed. (openssl avoids a SIGPIPE-under-pipefail from head/tr.)
+  printf '%s' "$(openssl rand -hex 32)" | ${G} secrets versions add session-secret --data-file=- >/dev/null
 fi
 info "session-secret ready"
 
