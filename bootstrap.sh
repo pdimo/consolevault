@@ -15,6 +15,17 @@ bold() { printf '\033[1m%s\033[0m\n' "$1"; }
 info() { printf '  %s\n' "$1"; }
 die() { printf '\033[31mERROR:\033[0m %s\n' "$1" >&2; exit 1; }
 
+# Retry a command a few times — smooths over fresh-project service-agent / API propagation lag.
+retry() {
+  local n=1 max="$1"; shift
+  while :; do
+    if "$@"; then return 0; fi
+    [ "$n" -ge "$max" ] && return 1
+    info "…transient (fresh-project provisioning lag); retry ${n}/${max} in 20s"
+    sleep 20; n=$((n + 1))
+  done
+}
+
 # --- Image source (prebuilt, public GHCR) ------------------------------------
 IMAGE_OWNER="${CV_IMAGE_OWNER:-pdimo}"
 IMAGE_TAG="${CV_VERSION:-latest}"
@@ -180,8 +191,10 @@ API_URL="$(${G} run services describe "${APP_NAME}-api" --region="${REGION}" --f
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/terraform/workflows/daily.yaml" ]; then
   bold "Daily workflow + schedule"
+  # Fresh projects lag in provisioning the Workflows service agent — force it, then retry the deploy.
+  ${G} beta services identity create --service=workflows.googleapis.com >/dev/null 2>&1 || true
   TMP_WF="$(mktemp)"; sed "s#__ORCHESTRATOR_URL__#${ORCH_URL}#g" "${SCRIPT_DIR}/terraform/workflows/daily.yaml" >"${TMP_WF}"
-  ${G} workflows deploy "${APP_NAME}-daily" --source="${TMP_WF}" --location="${REGION}" --service-account="${SA_WORKFLOWS}" >/dev/null
+  retry 6 ${G} workflows deploy "${APP_NAME}-daily" --source="${TMP_WF}" --location="${REGION}" --service-account="${SA_WORKFLOWS}"
   rm -f "${TMP_WF}"
   WF_URI="https://workflowexecutions.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/workflows/${APP_NAME}-daily/executions"
   ${G} scheduler jobs describe "${APP_NAME}-daily" --location="${REGION}" >/dev/null 2>&1 \
