@@ -12,6 +12,28 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-12
+
+Much easier onboarding: a one-command install with no Terraform, no local image
+build, and no Google OAuth client.
+
+### Added
+
+- **`bootstrap.sh`** — deploys the whole product with a single `gcloud`-only command
+  using prebuilt public images from GHCR (no Terraform, no image build). Auto-detects
+  project + admin, prompt-free, idempotent.
+- **Prebuilt public container images** published to GHCR on each release, so Cloud Run
+  pulls them directly.
+- **Bootstrap-generated admin password login** — sign in without creating a Google Web
+  OAuth client or configuring a consent screen. Combined with the service-account
+  collection path, the easy install is OAuth-free end to end.
+
+### Notes
+
+- The Terraform path (`setup.sh`) remains for advanced/large installs; both paths coexist.
+  Password login only activates when `ADMIN_PASSWORD` is set, so existing installs are
+  unaffected.
+
 ## [0.1.0] - 2026-08-03
 
 Initial public release.
@@ -46,5 +68,6 @@ Initial public release.
 - **Repo** — Apache-2.0 licensed, CI (typecheck / lint / build / test +
   `terraform fmt`/`validate`), CodeQL, and gitleaks secret scanning.
 
-[Unreleased]: https://github.com/pdimo/consolevault/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pdimo/consolevault/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/pdimo/consolevault/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pdimo/consolevault/releases/tag/v0.1.0
