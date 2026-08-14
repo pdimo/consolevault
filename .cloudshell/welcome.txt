@@ -1,0 +1,17 @@
+
+────────────────────────────────────────────────────────────────
+   ConsoleVault  ·  deploy into your own Google Cloud project
+────────────────────────────────────────────────────────────────
+
+   ▶  To install, type this and press Enter:
+
+          ./bootstrap.sh
+
+   It signs you in, lets you pick your project and region from a
+   menu, and deploys everything (~10 minutes). No Terraform, no
+   image build, no OAuth setup — it prints a URL + password at the
+   end that you use to sign in.
+
+   Make sure billing is enabled on your project first.
+   Docs: README.md   ·   Questions: https://dimo.com.au
+────────────────────────────────────────────────────────────────

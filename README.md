@@ -8,7 +8,7 @@ Built for SEO/marketing agencies managing many GSC properties across multiple Go
 who need backdated, complete, multi-property data in one warehouse. See [`SPEC.md`](./SPEC.md)
 for the full design (source of truth).
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/pdimo/consolevault.git&cloudshell_tutorial=.cloudshell/tutorial.md)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/pdimo/consolevault.git&cloudshell_tutorial=.cloudshell/tutorial.md&cloudshell_print=.cloudshell/welcome.txt)
 
 ![ConsoleVault client report — KPIs, clicks-over-time, brand vs non-brand](./docs/images/client-report.png)
 
