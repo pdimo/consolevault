@@ -41,54 +41,99 @@ ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/
 [ -n "${ACCOUNT}" ] || die "Not authenticated. Run: gcloud auth login && gcloud auth application-default login"
 info "gcloud account: ${ACCOUNT}"
 
-# --- Config (auto-detect; CV_* overrides; one confirm) -----------------------
+# --- Config (friendly menus for non-technical users; CV_* + CV_YES for automation) ---
+# The target user isn't technical and won't know region ids, so location + project are PICKERS,
+# not free text. Automation can still pass CV_PROJECT_ID / CV_BQ_LOCATION / CV_REGION / CV_YES=1.
 PROJECT_ID="${CV_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"; [ "${PROJECT_ID}" = "(unset)" ] && PROJECT_ID=""
 ADMINS="${CV_ADMIN_EMAILS:-${ACCOUNT}}"
-REGION="${CV_REGION:-us-central1}"
-BQ_LOCATION="${CV_BQ_LOCATION:-US}"
+REGION="${CV_REGION:-}"
+BQ_LOCATION="${CV_BQ_LOCATION:-}"
+FIRESTORE_LOCATION=""
 BILLING="${CV_BILLING_ACCOUNT:-}"
 
-prompt_config() {
-  local x
-  read -r -p "  GCP project id [${PROJECT_ID}]: " x; PROJECT_ID="${x:-$PROJECT_ID}"
-  read -r -p "  BQ + Firestore location — PERMANENT (US, EU, or a region e.g. australia-southeast1) [${BQ_LOCATION}]: " x; BQ_LOCATION="${x:-$BQ_LOCATION}"
-  read -r -p "  Cloud Run region (e.g. us-central1, australia-southeast1) [${REGION}]: " x; REGION="${x:-$REGION}"
-  read -r -p "  Admin email(s), comma-separated [${ADMINS}]: " x; ADMINS="${x:-$ADMINS}"
+# A "location" bundles the BigQuery/Firestore location, the Cloud Run region, and the Firestore
+# location id — co-located by default (US/EU are multi-regions; everything else is one region).
+set_location() { BQ_LOCATION="$1"; REGION="$2"; FIRESTORE_LOCATION="$3"; }
+set_location_from_input() {
+  case "${1^^}" in
+    US) set_location US us-central1 nam5 ;;
+    EU) set_location EU europe-west1 eur3 ;;
+    *) echo "$1" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' || return 1; set_location "$1" "$1" "$1" ;;
+  esac
 }
+
+choose_location() {
+  bold "Where should your data live?  (PERMANENT — pick the option closest to you)"
+  info "  1) United States"
+  info "  2) Europe"
+  info "  3) Australia — Sydney"
+  info "  4) United Kingdom — London"
+  info "  5) Canada — Montréal"
+  info "  6) Asia — Singapore"
+  info "  7) Other (type a Google Cloud region id)"
+  local c loc
+  read -r -p "  Choose 1-7: " c
+  case "${c}" in
+    1) set_location US us-central1 nam5 ;;
+    2) set_location EU europe-west1 eur3 ;;
+    3) set_location australia-southeast1 australia-southeast1 australia-southeast1 ;;
+    4) set_location europe-west2 europe-west2 europe-west2 ;;
+    5) set_location northamerica-northeast1 northamerica-northeast1 northamerica-northeast1 ;;
+    6) set_location asia-southeast1 asia-southeast1 asia-southeast1 ;;
+    7) read -r -p "  Region id (e.g. asia-south1, southamerica-east1): " loc
+       set_location_from_input "${loc}" || { info "…'${loc}' isn't a valid location — try again."; choose_location; } ;;
+    *) info "…please type a number from 1 to 7."; choose_location ;;
+  esac
+}
+
+choose_project() {
+  local pick i=1; local projs=()
+  # Newest first, so a just-created project is option 1.
+  while IFS= read -r p; do projs+=("$p"); done < <(gcloud projects list --sort-by=~createTime --format='value(projectId)' 2>/dev/null)
+  if [ "${#projs[@]}" -eq 0 ]; then
+    read -r -p "  Enter your GCP project id: " PROJECT_ID; return
+  fi
+  bold "Which Google Cloud project should ConsoleVault deploy into?"
+  for p in "${projs[@]}"; do info "  ${i}) ${p}"; i=$((i + 1)); done
+  read -r -p "  Choose a number (or type a project id): " pick
+  if printf '%s' "${pick}" | grep -Eq '^[0-9]+$' && [ "${pick}" -ge 1 ] && [ "${pick}" -le "${#projs[@]}" ]; then
+    PROJECT_ID="${projs[$((pick - 1))]}"
+  elif [ -n "${pick}" ]; then
+    PROJECT_ID="${pick}"
+  fi
+}
+
 show_summary() {
   bold "Bootstrap settings"
-  info "project id    : ${PROJECT_ID:-<none — run: gcloud config set project ID>}"
-  info "bq_location   : ${BQ_LOCATION}   (PERMANENT — cannot change later)"
-  info "region        : ${REGION}"
+  info "project id    : ${PROJECT_ID:-<none>}"
+  info "location      : ${BQ_LOCATION} (data) · ${REGION} (app)   — PERMANENT"
   info "admin email(s): ${ADMINS}"
   info "images        : ${API_IMAGE%:*}:${IMAGE_TAG} + workers"
 }
-if [ "${CV_YES:-}" != "1" ]; then
+
+if [ "${CV_YES:-}" = "1" ]; then
+  # Non-interactive: fill from env / defaults, then validate.
+  set_location_from_input "${BQ_LOCATION:-US}" || die "Invalid CV_BQ_LOCATION '${BQ_LOCATION}'. Use US, EU, or a region like australia-southeast1."
+  [ -n "${CV_REGION:-}" ] && REGION="${CV_REGION}"
+else
+  [ -n "${PROJECT_ID}" ] || choose_project
+  choose_location
+  read -r -p "  Admin email(s) for sign-in [${ADMINS}]: " x; ADMINS="${x:-$ADMINS}"
   while :; do
     show_summary
-    printf '  Press Enter to deploy, or type "edit" to change: '
+    printf '  Press Enter to deploy, or type "edit" to change anything: '
     read -r ans || ans=""
     case "${ans}" in
       "" | y | Y | yes) break ;;
-      edit | e | E) prompt_config ;;
-      *) info "…press Enter to accept, or type 'edit'." ;;
+      edit | e | E) choose_project; choose_location; read -r -p "  Admin email(s) [${ADMINS}]: " x; ADMINS="${x:-$ADMINS}" ;;
+      *) info "…press Enter to deploy, or type 'edit'." ;;
     esac
   done
 fi
-[ -n "${PROJECT_ID}" ] || die "No project set. Run: gcloud config set project PROJECT_ID (or set CV_PROJECT_ID), then re-run."
 
-# Validate region + the PERMANENT location BEFORE creating anything (Firestore can't be moved later).
-echo "${REGION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' \
-  || die "Invalid Cloud Run region '${REGION}'. Use a full region id like us-central1 or australia-southeast1 — not a country code."
-case "${BQ_LOCATION^^}" in
-  US) BQ_LOCATION="US"; FIRESTORE_LOCATION="nam5" ;;
-  EU) BQ_LOCATION="EU"; FIRESTORE_LOCATION="eur3" ;;
-  *)
-    echo "${BQ_LOCATION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' \
-      || die "Invalid location '${BQ_LOCATION}'. BigQuery/Firestore support US, EU, or a single region like australia-southeast1 — there is no 'AU' multi-region."
-    FIRESTORE_LOCATION="${BQ_LOCATION}"
-    ;;
-esac
+[ -n "${PROJECT_ID}" ] || die "No project selected."
+[ -n "${REGION}" ] && [ -n "${BQ_LOCATION}" ] && [ -n "${FIRESTORE_LOCATION}" ] || die "No location selected."
+echo "${REGION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' || die "Invalid region '${REGION}'."
 
 gcloud config set project "${PROJECT_ID}" >/dev/null 2>&1 || true
 # Set the ADC quota project too, so bq/storage calls don't hit a missing-quota-project error.
@@ -236,10 +281,11 @@ bold "✅ ConsoleVault is deployed."
 info "Management UI: ${API_URL}"
 echo
 if [ -n "${ADMIN_PW}" ]; then
-  bold "Admin password (save it now — shown only once)"
+  bold "Admin password (save it now)"
   info "${ADMIN_PW}"
-  echo
 fi
+info "Retrieve the password any time: gcloud secrets versions access latest --secret=admin-password --project=${PROJECT_ID}"
+echo
 bold "Next steps (all in the browser — no OAuth client, no consent screen)"
 info "1. Open ${API_URL} and sign in with the admin password above."
 info "2. Add this collector as a user on each Search Console property you manage:"
