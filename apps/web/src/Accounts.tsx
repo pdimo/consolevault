@@ -153,7 +153,25 @@ export default function Accounts() {
             the Google Cloud Console (Google only allows this in the Console), then paste its JSON
             here.
           </p>
+          <p className="mt-2 text-xs text-muted">
+            This is a <strong>one-time</strong> setup. Afterwards, “Connect Google account” goes
+            straight to the Google login and adds the account with all its properties.
+          </p>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+            <li>
+              Set up the{' '}
+              <a
+                className="text-accent underline"
+                href="https://console.cloud.google.com/apis/credentials/consent"
+                target="_blank"
+                rel="noreferrer"
+              >
+                OAuth consent screen
+              </a>{' '}
+              (one-time): choose <strong>External</strong>, add your email, add the scope{' '}
+              <code className="rounded bg-surface-2 px-1 text-xs">…/auth/webmasters.readonly</code>,
+              then <strong>Publish</strong> (staying “unverified” is fine).
+            </li>
             <li>
               Open{' '}
               <a
