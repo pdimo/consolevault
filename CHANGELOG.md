@@ -12,6 +12,19 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-14
+
+### Fixed
+
+- **Bootstrap install hardening** (from real fresh-install testing): menu-driven **location and
+  project pickers** (no typing region ids or project names), **automatic sign-in** and an up-front
+  **billing check**, correct permanent Firestore location, and a "run `./bootstrap.sh`" banner
+  printed in the Cloud Shell terminal on open.
+- **Service-account onboarding UX**: hide the OAuth "Connect Google account" button when no Web
+  OAuth client is configured (it returned a 500 on the bootstrap path), and clarify the
+  service-account card — register the collector **once**; it then collects every property that
+  grants it access.
+
 ## [0.1.1] - 2026-08-12
 
 Much easier onboarding: a one-command install with no Terraform, no local image
@@ -68,6 +81,7 @@ Initial public release.
 - **Repo** — Apache-2.0 licensed, CI (typecheck / lint / build / test +
   `terraform fmt`/`validate`), CodeQL, and gitleaks secret scanning.
 
-[Unreleased]: https://github.com/pdimo/consolevault/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/pdimo/consolevault/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/pdimo/consolevault/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/pdimo/consolevault/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/pdimo/consolevault/releases/tag/v0.1.0
