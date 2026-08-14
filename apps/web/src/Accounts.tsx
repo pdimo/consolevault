@@ -31,7 +31,7 @@ export default function Accounts() {
   const sa = state.collectorServiceAccount ?? '';
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [saEmail, setSaEmail] = useState('');
-  const [saLabel, setSaLabel] = useState('');
+  const [saLabel, setSaLabel] = useState('Search Console');
   const [expDataset, setExpDataset] = useState('searchconsole');
   const [expProject, setExpProject] = useState('');
   const [expLabel, setExpLabel] = useState('');
@@ -114,9 +114,14 @@ export default function Accounts() {
         title="Accounts"
         description="Connect the Google accounts whose Search Console properties you want to collect."
         actions={
-          <Button variant="primary" onClick={() => void connect()}>
-            + Connect Google account
-          </Button>
+          // The OAuth "Connect Google account" flow needs a Web OAuth client. The easy (bootstrap)
+          // install doesn't set one up — it uses the service-account path below — so only show this
+          // button when an OAuth client is actually configured.
+          state.googleClientId ? (
+            <Button variant="primary" onClick={() => void connect()}>
+              + Connect Google account
+            </Button>
+          ) : undefined
         }
       />
 
@@ -232,10 +237,12 @@ export default function Accounts() {
         </Table>
       )}
 
-      <Card className="mt-5" title="Service-account access">
+      <Card className="mt-5" title="Connect with the service account (recommended)">
         <p className="text-sm text-muted">
-          For clients who can&apos;t share an OAuth login: add <strong>this</strong> service-account
-          email as a user (Restricted is enough) on their Search Console property, then register it.
+          <strong>1.</strong> In Search Console, add the email below as a user (Restricted is
+          enough) on each property you manage. <strong>2.</strong> Register it here —{' '}
+          <strong>just once</strong>: it then collects every property that has granted it access, so
+          you don&apos;t add a separate account per property.
         </p>
         <div className="mt-3 flex items-center gap-2">
           <code className="rounded bg-surface-2 px-2 py-1 text-sm">{sa || '…'}</code>
