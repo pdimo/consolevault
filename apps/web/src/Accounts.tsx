@@ -114,14 +114,9 @@ export default function Accounts() {
         title="Accounts"
         description="Connect the Google accounts whose Search Console properties you want to collect."
         actions={
-          // The OAuth "Connect Google account" flow needs a Web OAuth client. The easy (bootstrap)
-          // install doesn't set one up — it uses the service-account path below — so only show this
-          // button when an OAuth client is actually configured.
-          state.googleClientId ? (
-            <Button variant="primary" onClick={() => void connect()}>
-              + Connect Google account
-            </Button>
-          ) : undefined
+          <Button variant="primary" onClick={() => void connect()}>
+            + Connect Google account
+          </Button>
         }
       />
 
