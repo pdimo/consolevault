@@ -147,6 +147,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ password }),
     }),
+  uploadOAuthClient: (clientJson: string) =>
+    http<{ ok: true }>('/api/oauth/client', {
+      method: 'POST',
+      body: JSON.stringify({ clientJson }),
+    }),
   logout: () => http<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
 
   // accounts

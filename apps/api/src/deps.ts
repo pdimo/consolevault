@@ -59,3 +59,8 @@ export async function getWebClientConfig(): Promise<WebClientConfig> {
   }
   return webClientCache;
 }
+
+/** Drop the cached Web OAuth client config (after it's uploaded/replaced at runtime). */
+export function clearWebClientCache(): void {
+  webClientCache = undefined;
+}

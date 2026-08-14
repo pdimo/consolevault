@@ -32,6 +32,8 @@ export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [saEmail, setSaEmail] = useState('');
   const [saLabel, setSaLabel] = useState('Search Console');
+  const [showOAuthSetup, setShowOAuthSetup] = useState(false);
+  const [clientJson, setClientJson] = useState('');
   const [expDataset, setExpDataset] = useState('searchconsole');
   const [expProject, setExpProject] = useState('');
   const [expLabel, setExpLabel] = useState('');
@@ -79,8 +81,25 @@ export default function Accounts() {
           : 'Token was revoked — reconnect this account';
 
   const connect = async () => {
+    // No Web OAuth client yet (e.g. a bootstrap deployment) → guide the admin to add one in-app.
+    if (!state.googleClientId) {
+      setShowOAuthSetup(true);
+      return;
+    }
     const { url } = await api.connectStart();
     window.location.href = url;
+  };
+
+  const saveOAuthClient = async () => {
+    setBusyKey('oauth-client');
+    try {
+      await api.uploadOAuthClient(clientJson);
+      const { url } = await api.connectStart(); // straight into Google authorization
+      window.location.href = url;
+    } catch (e) {
+      toast(String(e), 'error');
+      setBusyKey(null);
+    }
   };
 
   const remove = async (a: Account) => {
@@ -125,6 +144,62 @@ export default function Accounts() {
       )}
       {connectBanner === 'denied' && (
         <p className="mb-3 text-sm text-bad">Connection was cancelled.</p>
+      )}
+
+      {showOAuthSetup && (
+        <Card className="mb-4" title="Enable Google sign-in (one-time)">
+          <p className="text-sm text-muted">
+            To connect a Google account by sign-in, create a <strong>Web</strong> OAuth client in
+            the Google Cloud Console (Google only allows this in the Console), then paste its JSON
+            here.
+          </p>
+          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+            <li>
+              Open{' '}
+              <a
+                className="text-accent underline"
+                href="https://console.cloud.google.com/apis/credentials"
+                target="_blank"
+                rel="noreferrer"
+              >
+                APIs &amp; Services → Credentials
+              </a>{' '}
+              → <strong>Create credentials → OAuth client ID → Web application</strong>.
+            </li>
+            <li>
+              Add these two values, then <strong>Create</strong> and{' '}
+              <strong>download the JSON</strong>:
+              <div className="mt-1 space-y-1">
+                <div className="text-xs text-muted">Authorized JavaScript origin</div>
+                <code className="block rounded bg-surface-2 px-2 py-1 text-xs">
+                  {state.jsOrigin}
+                </code>
+                <div className="text-xs text-muted">Authorized redirect URI</div>
+                <code className="block rounded bg-surface-2 px-2 py-1 text-xs">
+                  {state.redirectUri}
+                </code>
+              </div>
+            </li>
+            <li>Paste the downloaded JSON below.</li>
+          </ol>
+          <textarea
+            value={clientJson}
+            onChange={(e) => setClientJson(e.target.value)}
+            placeholder='{ "web": { "client_id": "…", "client_secret": "…" } }'
+            className="mt-3 h-28 w-full rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+          />
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="primary"
+              disabled={!clientJson || busy}
+              loading={busyKey === 'oauth-client'}
+              onClick={() => void saveOAuthClient()}
+            >
+              Enable &amp; connect
+            </Button>
+            <Button onClick={() => setShowOAuthSetup(false)}>Cancel</Button>
+          </div>
+        </Card>
       )}
 
       {!accounts ? (
