@@ -122,7 +122,7 @@ export default function Accounts() {
       void run(
         `rm:${a.id}`,
         () => api.deleteAccount(a.id),
-        () => toast('Account removed', 'success'),
+        () => toast('Connection removed', 'success'),
       );
     }
   };
@@ -130,8 +130,8 @@ export default function Accounts() {
   return (
     <div>
       <PageHeader
-        title="Accounts"
-        description="Connect the Google accounts whose Search Console properties you want to collect."
+        title="Connections"
+        description="Everything feeding Search Console data in — Google accounts, service accounts, and BigQuery exports. Each connection collects its own properties."
         actions={
           <Button variant="primary" onClick={() => void connect()}>
             + Connect Google account
@@ -298,16 +298,17 @@ export default function Accounts() {
             ))}
             {accounts.length === 0 && (
               <tr>
-                <Td className="px-3 py-6 text-muted">
-                  No accounts yet — connect a Google account or register the service account below.
-                </Td>
+                <Td className="px-3 py-6 text-muted">No connections yet — add one below.</Td>
               </tr>
             )}
           </tbody>
         </Table>
       )}
 
-      <Card className="mt-5" title="Connect with the service account (recommended)">
+      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted">
+        Add a connection
+      </h2>
+      <Card title="Service account (recommended for agencies)">
         <p className="text-sm text-muted">
           <strong>1.</strong> In Search Console, add the email below as a user (Restricted is
           enough) on each property you manage. <strong>2.</strong> Register it here —{' '}
