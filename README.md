@@ -38,31 +38,25 @@ without budgeting for CASA.
 
 ## Deploy
 
-**New to Google Cloud?** Start with the [**30-minute Getting Started guide**](./docs/GETTING-STARTED.md)
-— non-technical, copy-paste, and browser-only via Cloud Shell. The short version:
-
-**One command** (needs `gcloud` + `terraform`, and `gcloud auth login` +
-`gcloud auth application-default login` done — or just use **Cloud Shell**, which has `gcloud`;
-`setup.sh` auto-installs Terraform there since Cloud Shell no longer ships it):
+**Not technical? Use the one-command installer.** Click **Open in Cloud Shell** above (or open
+[Cloud Shell](https://shell.cloud.google.com) and `git clone` this repo), then run:
 
 ```bash
-./setup.sh
+./bootstrap.sh
 ```
 
-It **auto-detects your project and admin email** from `gcloud`, shows a one-screen summary, and
-asks you to confirm once — press **Enter** to deploy, or type `edit` to change anything (region,
-extra admins, a billing account for the budget). The only permanent choice is `bq_location`
-(BigQuery + Firestore), which defaults to `US`. Re-running is safe. Or click **Open in Cloud
-Shell** above for the same thing as a guided, click-through walkthrough. For the manual path and
-per-scenario detail see **[docs/DEPLOY.md](./docs/DEPLOY.md)**.
+**No Terraform, no image build, no Google OAuth client.** It pulls prebuilt public images and asks
+just two things from a **menu** — which project, and where your data should live (United States,
+Europe, Australia — Sydney, …) — then deploys everything and prints your **URL + a one-time admin
+password**. Sign in with that password (no consent screen), then **Accounts → Service-account
+access**: add the shown `sa-collector@…` email to your Search Console properties, **Register**, and
+**Jobs → Run now**. That's it.
 
-> `bq_location` (BigQuery + Firestore) is **permanent** and cannot be changed later — choose once.
+> The data **location is permanent** — the menu makes you pick it up front. Re-running is safe.
 
-After deploy: open the UI — a **setup wizard** shows the exact values to create your Google Web OAuth
-client, then `./setup.sh` uploads it (see [docs/AUTH.md](./docs/AUTH.md) for every scenario). Sign in,
-**Connect Google account**, set your alert email in **Settings**, include properties, and run.
-Prefer to look around first? **Settings → Sample data** adds a demo client with fully populated
-reports.
+**Advanced / large installs** can use the full **Terraform** path instead (least-privilege,
+dataset-scoped IAM, billing budget, OAuth sign-in): see **[docs/DEPLOY.md](./docs/DEPLOY.md)**. Both
+paths deploy into your own project; they don't mix.
 
 ## Already using Google's native BigQuery export?
 
