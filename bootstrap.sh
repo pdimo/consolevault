@@ -48,18 +48,11 @@ REGION="${CV_REGION:-us-central1}"
 BQ_LOCATION="${CV_BQ_LOCATION:-US}"
 BILLING="${CV_BILLING_ACCOUNT:-}"
 
-# Firestore location: US/EU are multi-region (nam5/eur3); otherwise use the region as-is.
-case "${BQ_LOCATION^^}" in
-  US) FIRESTORE_LOCATION="nam5" ;;
-  EU) FIRESTORE_LOCATION="eur3" ;;
-  *) FIRESTORE_LOCATION="${BQ_LOCATION}" ;;
-esac
-
 prompt_config() {
   local x
   read -r -p "  GCP project id [${PROJECT_ID}]: " x; PROJECT_ID="${x:-$PROJECT_ID}"
-  read -r -p "  BigQuery + Firestore location — PERMANENT [${BQ_LOCATION}]: " x; BQ_LOCATION="${x:-$BQ_LOCATION}"
-  read -r -p "  Cloud Run region [${REGION}]: " x; REGION="${x:-$REGION}"
+  read -r -p "  BQ + Firestore location — PERMANENT (US, EU, or a region e.g. australia-southeast1) [${BQ_LOCATION}]: " x; BQ_LOCATION="${x:-$BQ_LOCATION}"
+  read -r -p "  Cloud Run region (e.g. us-central1, australia-southeast1) [${REGION}]: " x; REGION="${x:-$REGION}"
   read -r -p "  Admin email(s), comma-separated [${ADMINS}]: " x; ADMINS="${x:-$ADMINS}"
 }
 show_summary() {
@@ -83,7 +76,23 @@ if [ "${CV_YES:-}" != "1" ]; then
   done
 fi
 [ -n "${PROJECT_ID}" ] || die "No project set. Run: gcloud config set project PROJECT_ID (or set CV_PROJECT_ID), then re-run."
+
+# Validate region + the PERMANENT location BEFORE creating anything (Firestore can't be moved later).
+echo "${REGION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' \
+  || die "Invalid Cloud Run region '${REGION}'. Use a full region id like us-central1 or australia-southeast1 — not a country code."
+case "${BQ_LOCATION^^}" in
+  US) BQ_LOCATION="US"; FIRESTORE_LOCATION="nam5" ;;
+  EU) BQ_LOCATION="EU"; FIRESTORE_LOCATION="eur3" ;;
+  *)
+    echo "${BQ_LOCATION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' \
+      || die "Invalid location '${BQ_LOCATION}'. BigQuery/Firestore support US, EU, or a single region like australia-southeast1 — there is no 'AU' multi-region."
+    FIRESTORE_LOCATION="${BQ_LOCATION}"
+    ;;
+esac
+
 gcloud config set project "${PROJECT_ID}" >/dev/null 2>&1 || true
+# Set the ADC quota project too, so bq/storage calls don't hit a missing-quota-project error.
+gcloud auth application-default set-quota-project "${PROJECT_ID}" >/dev/null 2>&1 || true
 
 SA_API="sa-api@${PROJECT_ID}.iam.gserviceaccount.com"
 SA_COLLECTOR="sa-collector@${PROJECT_ID}.iam.gserviceaccount.com"
