@@ -37,8 +37,16 @@ bold "ConsoleVault bootstrap (no Terraform, no build)"
 
 # --- Preflight (gcloud only — no terraform, no docker) -----------------------
 command -v gcloud >/dev/null || die "gcloud CLI not found. Use Cloud Shell (it has gcloud) or install the Google Cloud SDK."
-ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null || true)"
-[ -n "${ACCOUNT}" ] || die "Not authenticated. Run: gcloud auth login && gcloud auth application-default login"
+active_account() { gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null || true; }
+ACCOUNT="$(active_account)"
+# A fresh Cloud Shell session hasn't authorized gcloud yet — sign the user in for them (interactive
+# only; automation should pre-authenticate and set CV_YES=1).
+if [ -z "${ACCOUNT}" ] && [ "${CV_YES:-}" != "1" ]; then
+  bold "Let's sign you in to Google Cloud — approve the authorization prompt that appears."
+  gcloud auth login || true
+  ACCOUNT="$(active_account)"
+fi
+[ -n "${ACCOUNT}" ] || die "Sign-in didn't complete. Run 'gcloud auth login', then re-run ./bootstrap.sh."
 info "gcloud account: ${ACCOUNT}"
 
 # --- Config (friendly menus for non-technical users; CV_* + CV_YES for automation) ---
@@ -138,6 +146,14 @@ echo "${REGION}" | grep -Eq '^[a-z]+-[a-z]+[0-9]+$' || die "Invalid region '${RE
 gcloud config set project "${PROJECT_ID}" >/dev/null 2>&1 || true
 # Set the ADC quota project too, so bq/storage calls don't hit a missing-quota-project error.
 gcloud auth application-default set-quota-project "${PROJECT_ID}" >/dev/null 2>&1 || true
+
+# Billing is the #1 thing a non-technical user forgets — check it now with a clear message rather
+# than failing cryptically on the first resource. (Best-effort: skip the check if it can't be read.)
+BILLING_ON="$(gcloud billing projects describe "${PROJECT_ID}" --format='value(billingEnabled)' 2>/dev/null || echo unknown)"
+if [ "${BILLING_ON}" = "False" ] || [ "${BILLING_ON}" = "false" ]; then
+  die "Billing isn't enabled on '${PROJECT_ID}'. Turn it on here, then re-run ./bootstrap.sh:
+       https://console.cloud.google.com/billing/linkedaccount?project=${PROJECT_ID}"
+fi
 
 SA_API="sa-api@${PROJECT_ID}.iam.gserviceaccount.com"
 SA_COLLECTOR="sa-collector@${PROJECT_ID}.iam.gserviceaccount.com"
