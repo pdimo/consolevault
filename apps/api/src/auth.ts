@@ -81,6 +81,7 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       needsSetup: !googleClientId && !passwordLoginEnabled,
       redirectUri: `https://${host}/api/oauth/callback`,
       jsOrigin: `https://${host}`,
+      projectId: config.projectId,
       collectorServiceAccount: `sa-collector@${config.projectId}.iam.gserviceaccount.com`,
       // Service accounts a client must grant BigQuery Data Viewer to when sharing a native export
       // dataset (SPEC §12): the API reads it for connect/reports, the orchestrator for the daily job.

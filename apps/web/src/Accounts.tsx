@@ -102,6 +102,20 @@ export default function Accounts() {
     }
   };
 
+  const copy = (v: string) => {
+    void navigator.clipboard.writeText(v);
+    toast('Copied', 'success');
+  };
+  const copyable = (v: string) => (
+    <span className="inline-flex items-center gap-1.5">
+      <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{v}</code>
+      <button type="button" onClick={() => copy(v)} className="text-xs text-accent hover:underline">
+        copy
+      </button>
+    </span>
+  );
+  const proj = state.projectId ? `?project=${state.projectId}` : '';
+
   const remove = async (a: Account) => {
     const n = a.propertyCount ?? 0;
     const props = `${n} propert${n === 1 ? 'y' : 'ies'}`;
@@ -149,56 +163,59 @@ export default function Accounts() {
       {showOAuthSetup && (
         <Card className="mb-4" title="Enable Google sign-in (one-time)">
           <p className="text-sm text-muted">
-            To connect a Google account by sign-in, create a <strong>Web</strong> OAuth client in
-            the Google Cloud Console (Google only allows this in the Console), then paste its JSON
-            here.
+            A Google-account login needs a <strong>Web OAuth client</strong> for this deployment.
+            Google only lets you create it in the Console, so it&apos;s a <strong>one-time</strong>{' '}
+            setup — afterwards, “Connect Google account” goes straight to the Google login and adds
+            the account with all its properties.
           </p>
-          <p className="mt-2 text-xs text-muted">
-            This is a <strong>one-time</strong> setup. Afterwards, “Connect Google account” goes
-            straight to the Google login and adds the account with all its properties.
-          </p>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
+          <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm">
             <li>
-              Set up the{' '}
               <a
                 className="text-accent underline"
-                href="https://console.cloud.google.com/apis/credentials/consent"
+                href={`https://console.cloud.google.com/apis/credentials/consent${proj}`}
                 target="_blank"
                 rel="noreferrer"
               >
-                OAuth consent screen
+                Configure the OAuth consent screen
               </a>{' '}
-              (one-time): choose <strong>External</strong>, add your email, add the scope{' '}
-              <code className="rounded bg-surface-2 px-1 text-xs">…/auth/webmasters.readonly</code>,
-              then <strong>Publish</strong> (staying “unverified” is fine).
+              and add the scope {copyable('https://www.googleapis.com/auth/webmasters.readonly')}.
+              <ul className="mt-1.5 list-disc space-y-1 pl-5 text-muted">
+                <li>
+                  In a Google Workspace org and only authorizing accounts inside it? Choose{' '}
+                  <strong>Internal</strong> — nothing else to do (no publishing, no warning).
+                </li>
+                <li>
+                  Otherwise choose <strong>External</strong> and click <strong>Publish</strong>.
+                  Staying “unverified” is fine — at sign-in you just click{' '}
+                  <em>Advanced → Continue</em>.
+                </li>
+              </ul>
             </li>
             <li>
-              Open{' '}
               <a
                 className="text-accent underline"
-                href="https://console.cloud.google.com/apis/credentials"
+                href={`https://console.cloud.google.com/apis/credentials${proj}`}
                 target="_blank"
                 rel="noreferrer"
               >
-                APIs &amp; Services → Credentials
-              </a>{' '}
-              → <strong>Create credentials → OAuth client ID → Web application</strong>.
-            </li>
-            <li>
-              Add these two values, then <strong>Create</strong> and{' '}
+                Create credentials → OAuth client ID → Web application
+              </a>
+              , add these two values, then <strong>Create</strong> and{' '}
               <strong>download the JSON</strong>:
-              <div className="mt-1 space-y-1">
-                <div className="text-xs text-muted">Authorized JavaScript origin</div>
-                <code className="block rounded bg-surface-2 px-2 py-1 text-xs">
-                  {state.jsOrigin}
-                </code>
-                <div className="text-xs text-muted">Authorized redirect URI</div>
-                <code className="block rounded bg-surface-2 px-2 py-1 text-xs">
-                  {state.redirectUri}
-                </code>
+              <div className="mt-1.5 space-y-1.5">
+                <div>
+                  <span className="mr-2 text-xs text-muted">JavaScript origin</span>
+                  {copyable(state.jsOrigin ?? '')}
+                </div>
+                <div>
+                  <span className="mr-2 text-xs text-muted">Redirect URI</span>
+                  {copyable(state.redirectUri ?? '')}
+                </div>
               </div>
             </li>
-            <li>Paste the downloaded JSON below.</li>
+            <li>
+              Paste the downloaded JSON below, then <strong>Enable &amp; connect</strong>.
+            </li>
           </ol>
           <textarea
             value={clientJson}

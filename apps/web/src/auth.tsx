@@ -11,6 +11,7 @@ interface AuthState {
   needsSetup?: boolean;
   redirectUri?: string;
   jsOrigin?: string;
+  projectId?: string;
   error?: string;
 }
 
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         needsSetup: cfg.needsSetup,
         redirectUri: cfg.redirectUri,
         jsOrigin: cfg.jsOrigin,
+        projectId: cfg.projectId,
         ...(cfg.googleClientId ? { googleClientId: cfg.googleClientId } : {}),
         ...(cfg.exportReaderServiceAccounts
           ? { exportReaderServiceAccounts: cfg.exportReaderServiceAccounts }

@@ -133,6 +133,7 @@ export const api = {
       needsSetup: boolean;
       redirectUri: string;
       jsOrigin: string;
+      projectId: string;
       collectorServiceAccount: string;
       exportReaderServiceAccounts?: string[];
     }>('/api/config'),
