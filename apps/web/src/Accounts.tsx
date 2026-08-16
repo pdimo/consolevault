@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import type { Account, TokenHealth } from '@consolevault/types';
 import { api } from './api';
 import { useAuth } from './auth';
@@ -102,6 +102,14 @@ export default function Accounts() {
     }
   };
 
+  const onClientFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setClientJson(String(reader.result ?? ''));
+    reader.onerror = () => toast('Could not read that file', 'error');
+    reader.readAsText(file);
+  };
   const copy = (v: string) => {
     void navigator.clipboard.writeText(v);
     toast('Copied', 'success');
@@ -179,15 +187,21 @@ export default function Accounts() {
                 Configure the OAuth consent screen
               </a>{' '}
               and add the scope {copyable('https://www.googleapis.com/auth/webmasters.readonly')}.
-              <ul className="mt-1.5 list-disc space-y-1 pl-5 text-muted">
+              <ul className="mt-1.5 list-disc space-y-1.5 pl-5 text-muted">
                 <li>
-                  In a Google Workspace org and only authorizing accounts inside it? Choose{' '}
-                  <strong>Internal</strong> — nothing else to do (no publishing, no warning).
+                  <strong>User type:</strong> <strong>Internal</strong> if your project is in a
+                  Google Workspace org and you&apos;ll only authorize accounts inside it (nothing
+                  more to do); otherwise <strong>External</strong>.
+                </li>
+                <li className="text-fg">
+                  <strong>Then click “Publish app.”</strong> This is the step people miss — if you
+                  leave it in <em>Testing</em>, sign-in is <strong>blocked</strong> with “app is
+                  being tested.” (Or, to stay in Testing, add your Google account under{' '}
+                  <strong>Test users</strong>.)
                 </li>
                 <li>
-                  Otherwise choose <strong>External</strong> and click <strong>Publish</strong>.
-                  Staying “unverified” is fine — at sign-in you just click{' '}
-                  <em>Advanced → Continue</em>.
+                  Unverified is fine for your own use — at sign-in, click{' '}
+                  <em>Advanced → Continue</em> to proceed past the warning.
                 </li>
               </ul>
             </li>
@@ -217,12 +231,18 @@ export default function Accounts() {
               Paste the downloaded JSON below, then <strong>Enable &amp; connect</strong>.
             </li>
           </ol>
-          <textarea
-            value={clientJson}
-            onChange={(e) => setClientJson(e.target.value)}
-            placeholder='{ "web": { "client_id": "…", "client_secret": "…" } }'
-            className="mt-3 h-28 w-full rounded-lg border border-line bg-bg px-3 py-2 font-mono text-xs outline-none focus:border-accent"
-          />
+          <div className="mt-3">
+            <label className="text-sm font-medium">Upload the client JSON you downloaded</label>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={onClientFile}
+              className="mt-1 block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-fg hover:file:bg-line"
+            />
+            {clientJson && (
+              <p className="mt-1 text-xs text-ok">✓ File loaded — ready to connect.</p>
+            )}
+          </div>
           <div className="mt-3 flex gap-2">
             <Button
               variant="primary"
