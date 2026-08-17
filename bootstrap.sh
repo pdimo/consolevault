@@ -28,7 +28,8 @@ retry() {
 
 # --- Image source (prebuilt, public GHCR) ------------------------------------
 IMAGE_OWNER="${CV_IMAGE_OWNER:-pdimo}"
-IMAGE_TAG="${CV_VERSION:-latest}"
+# GHCR tags carry no leading "v" (docker/metadata-action strips it), so accept either form.
+IMAGE_TAG="${CV_VERSION:-latest}"; IMAGE_TAG="${IMAGE_TAG#v}"
 API_IMAGE="ghcr.io/${IMAGE_OWNER}/consolevault-api:${IMAGE_TAG}"
 WORKER_IMAGE="ghcr.io/${IMAGE_OWNER}/consolevault-workers:${IMAGE_TAG}"
 APP_NAME="consolevault"
@@ -306,4 +307,5 @@ bold "Next steps (all in the browser — no OAuth client, no consent screen)"
 info "1. Open ${API_URL} and sign in with the admin password above."
 info "2. Add this collector as a user on each Search Console property you manage:"
 info "     ${SA_COLLECTOR}"
-info "3. Include the properties you want and run the pipeline (Jobs → Run now)."
+info "3. In the UI: Connections → Add a connection → Service account → paste that email → Register."
+info "4. Include the properties you want and run the pipeline (Jobs → Run now)."

@@ -48,9 +48,9 @@ without budgeting for CASA.
 **No Terraform, no image build, no Google OAuth client.** It pulls prebuilt public images and asks
 just two things from a **menu** — which project, and where your data should live (United States,
 Europe, Australia — Sydney, …) — then deploys everything and prints your **URL + a one-time admin
-password**. Sign in with that password (no consent screen), then **Accounts → Service-account
-access**: add the shown `sa-collector@…` email to your Search Console properties, **Register**, and
-**Jobs → Run now**. That's it.
+password**. Sign in with that password (no consent screen), then **Connections → Add a connection →
+Service account**: add the shown `sa-collector@…` email to your Search Console properties,
+**Register**, and **Jobs → Run now**. That's it.
 
 > The data **location is permanent** — the menu makes you pick it up front. Re-running is safe.
 
