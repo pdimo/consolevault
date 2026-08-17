@@ -6,9 +6,9 @@
 import type { AuthClient } from 'google-auth-library';
 import {
   oauthClientFromRefreshToken,
+  parseClientSecretJson,
   serviceAccountClient,
   serviceAccountClientFromKey,
-  type OAuthClientConfig,
 } from '@consolevault/gsc';
 import type { Account } from '@consolevault/types';
 import { SECRET_IDS, type SecretStore } from './secrets.js';
@@ -26,7 +26,11 @@ export async function authClientForAccount(
   if (account.type === 'oauth') {
     // Refresh with the client that minted the token (Desktop helper vs in-UI web flow).
     const clientSecretId = account.oauthClientSecretId ?? SECRET_IDS.oauthClientConfig;
-    const config = JSON.parse(await secretStore.getSecret(clientSecretId)) as OAuthClientConfig;
+    // The stored secret is the raw downloaded Google client file ({web:{…}} for the in-UI web flow,
+    // {installed:{…}} for the Desktop helper). parseClientSecretJson pulls client_id/client_secret
+    // out of that nesting — a blind cast to {clientId,clientSecret} leaves them undefined and the
+    // token refresh fails with invalid_request.
+    const config = parseClientSecretJson(JSON.parse(await secretStore.getSecret(clientSecretId)));
     const refreshToken = await secretStore.getSecret(SECRET_IDS.oauthRefresh(account.id));
     return oauthClientFromRefreshToken(config, refreshToken);
   }
