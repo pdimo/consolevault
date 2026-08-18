@@ -89,6 +89,12 @@ export interface Account {
   lastSuccessAt?: string; // ISO 8601
   propertyCount?: number;
   /**
+   * This deployment's own `sa-collector@…` connection, materialised automatically rather than
+   * registered by the admin. It can't be removed — revoking it means removing its access in
+   * Search Console. Derived per request, so installs that registered it by hand also get it.
+   */
+  builtIn?: boolean;
+  /**
    * For `bigquery_export` connections only: the GSC native Bulk Export dataset to read
    * (SPEC §12). `projectId` defaults to this deployment's project; `datasetId` defaults to
    * `searchconsole` (GSC's default export dataset name). `location` is the dataset's BigQuery

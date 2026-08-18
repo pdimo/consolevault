@@ -21,16 +21,51 @@ interface IdParams {
   id: string;
 }
 
+/**
+ * The deployment's own collector service account is a fixed fact of the install — its email is
+ * derived from the project id, and Terraform/bootstrap always create it. Registering it by hand
+ * was pure ceremony, so it is materialised as a connection the first time the list is read and
+ * shown as "awaiting access" until a Search Console property grants it.
+ */
+const collectorEmail = (): string => `sa-collector@${config.projectId}.iam.gserviceaccount.com`;
+
+async function ensureCollectorAccount(existing: Account[]): Promise<Account | null> {
+  const email = collectorEmail();
+  if (existing.some((a) => a.email === email)) return null;
+  const account: Account = {
+    id: randomUUID(),
+    type: 'service_account',
+    displayName: 'Collector service account',
+    email,
+    builtIn: true,
+    tokenHealth: 'valid',
+    createdAt: new Date().toISOString(),
+  };
+  await accountRepo.create(account);
+  return account;
+}
+
 export function registerApiRoutes(app: FastifyInstance): void {
   // Accounts enriched with a live property count (how many properties each connection reaches) so
   // the UI can warn what a removal affects. For bigquery_export the count is its imported properties.
   app.get('/api/accounts', async () => {
-    const [accounts, properties] = await Promise.all([accountRepo.list(), propertyRepo.list()]);
+    const stored = await accountRepo.list();
+    const created = await ensureCollectorAccount(stored);
+    const [accounts, properties] = await Promise.all([
+      created ? [...stored, created] : stored,
+      propertyRepo.list(),
+    ]);
     const counts = new Map<string, number>();
     for (const p of properties) {
       for (const aid of p.accountIds) counts.set(aid, (counts.get(aid) ?? 0) + 1);
     }
-    return accounts.map((a) => ({ ...a, propertyCount: counts.get(a.id) ?? 0 }));
+    // Derive builtIn rather than trusting the stored flag alone: installs that registered the
+    // collector by hand before it was automatic have the row but not the flag.
+    return accounts.map((a) => ({
+      ...a,
+      builtIn: a.builtIn === true || a.email === collectorEmail(),
+      propertyCount: counts.get(a.id) ?? 0,
+    }));
   });
 
   // Register a service-account account (impersonation). OAuth accounts are added by the
@@ -80,8 +115,17 @@ export function registerApiRoutes(app: FastifyInstance): void {
     tokenHealth: await checkAccountHealth(req.params.id),
   }));
 
-  app.delete<{ Params: IdParams }>('/api/accounts/:id', async (req) =>
-    deleteAccountCascade(req.params.id, {
+  // The built-in collector is intrinsic to the deployment — ensureCollectorAccount would just
+  // recreate it on the next list, which reads as a bug. Refuse rather than churn.
+  app.delete<{ Params: IdParams }>('/api/accounts/:id', async (req) => {
+    const account = await accountRepo.get(req.params.id);
+    if (account && (account.builtIn === true || account.email === collectorEmail())) {
+      throw new HttpError(
+        400,
+        "This deployment's own collector service account can't be removed. Revoke its access in Search Console instead.",
+      );
+    }
+    return deleteAccountCascade(req.params.id, {
       accountRepo,
       taskRepo,
       secretStore,
@@ -89,8 +133,8 @@ export function registerApiRoutes(app: FastifyInstance): void {
       propertyRepo,
       warehouse,
       config,
-    }),
-  );
+    });
+  });
 
   app.get('/api/properties', async () => propertyRepo.list());
 
