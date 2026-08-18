@@ -95,9 +95,17 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
 
   const save = async () => {
     setSaving(true);
+    // Turning tracking on here should start collecting, exactly as it does on the Properties list —
+    // otherwise enabling from the config page silently waits for the next daily run.
+    const startsTracking = included && !property?.included && property?.source !== 'native_export';
     try {
       await api.patchProperty(id, { included, config, brandTerms: parseTerms(brandTerms) });
-      toast('Saved', 'success');
+      if (startsTracking) {
+        await api.runPipeline([id]);
+        toast('Saved — collecting now', 'success');
+      } else {
+        toast('Saved', 'success');
+      }
       setCoverage(await api.coverage(id));
     } catch (e) {
       toast(String(e), 'error');

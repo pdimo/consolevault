@@ -91,8 +91,9 @@ export default function Overview() {
     );
   }
 
-  const needsOnboarding =
-    ov.accounts.total === 0 || (ov.properties.total === 0 && ov.accounts.total > 0);
+  // Every deployment now has at least one connection from first load (its own collector service
+  // account), so "has an account" no longer means "is set up" — having discovered properties does.
+  const needsOnboarding = ov.properties.total === 0;
 
   if (needsOnboarding) {
     return (
@@ -100,14 +101,8 @@ export default function Overview() {
         <PageHeader title="Home" />
         <EmptyState
           icon="◎"
-          title={
-            ov.accounts.total === 0 ? 'Connect your first account' : 'Discover your properties'
-          }
-          description={
-            ov.accounts.total === 0
-              ? 'Connect a data source — a Google account, this deployment\'s service account, or a BigQuery export.'
-              : 'Run discovery to list the properties available to track.'
-          }
+          title="Connect your Search Console data"
+          description="Grant this deployment's service account access in Search Console, or connect a Google account. Then discovery lists the properties you can track."
           action={
             <Link to="/accounts">
               <Button variant="primary">Go to Connections</Button>
@@ -129,8 +124,10 @@ export default function Overview() {
 
   const steps = [
     {
-      done: ov.accounts.total > 0,
-      label: 'Connect a Google account',
+      // Not accounts.total — the built-in collector is always present, so it would read as done
+      // before the user has connected anything. Discovered properties are the real signal.
+      done: ov.properties.total > 0,
+      label: 'Connect a data source',
       to: '/accounts',
       cta: 'Connect',
     },
