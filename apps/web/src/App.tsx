@@ -13,6 +13,7 @@ import ClientConfigure from './ClientConfigure';
 import Dashboard from './Dashboard';
 import Opportunities from './Opportunities';
 import Accounts from './Accounts';
+import ConnectGoogle from './ConnectGoogle';
 import Properties from './Properties';
 import Groups from './Groups';
 import Jobs from './Jobs';
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="/properties" element={<Properties />} />
         <Route path="/groups" element={<Groups />} />
         <Route path="/accounts" element={<Accounts />} />
+        <Route path="/accounts/connect-google" element={<ConnectGoogle />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/health" element={<Doctor />} />
         <Route path="/costs" element={<Costs />} />

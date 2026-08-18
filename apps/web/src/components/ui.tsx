@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -169,6 +170,68 @@ export function EmptyState({
       <p className="font-semibold">{title}</p>
       {description && <p className="max-w-md text-sm text-muted">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
+}
+
+// --- Guided setup -----------------------------------------------------------
+// Used wherever we walk an admin through Console steps we can't perform for them: a value to
+// paste (CopyField) and a numbered instruction (Step). Shared so the first-run wizard and the
+// Connections flow can't drift apart.
+
+/** A read-only value with a copy button — the exact string to paste into the Cloud Console. */
+export function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — user can select manually */
+    }
+  };
+  return (
+    <div className="mt-2">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      <div className="flex items-stretch gap-2">
+        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-line bg-surface-2 px-3 py-2 text-xs whitespace-nowrap">
+          {value}
+        </code>
+        <Button size="sm" onClick={() => void copy()} className="shrink-0">
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A numbered step in a guided flow. `done` marks it complete once the admin confirms. */
+export function Step({
+  n,
+  title,
+  done,
+  children,
+}: {
+  n: number;
+  title: string;
+  done?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span
+        className={cx(
+          'grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold',
+          done ? 'bg-ok text-white' : 'bg-accent text-accent-fg',
+        )}
+      >
+        {done ? '✓' : n}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{title}</p>
+        <div className="mt-1 text-sm text-muted">{children}</div>
+      </div>
     </div>
   );
 }

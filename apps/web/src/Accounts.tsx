@@ -1,4 +1,5 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Account, TokenHealth } from '@consolevault/types';
 import { api } from './api';
 import { useAuth } from './auth';
@@ -7,6 +8,8 @@ import {
   Badge,
   Button,
   Card,
+  cx,
+  EmptyState,
   Field,
   PageHeader,
   Spinner,
@@ -28,12 +31,13 @@ export default function Accounts() {
   const { state } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const sa = state.collectorServiceAccount ?? '';
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [saEmail, setSaEmail] = useState('');
   const [saLabel, setSaLabel] = useState('Search Console');
-  const [showOAuthSetup, setShowOAuthSetup] = useState(false);
-  const [clientJson, setClientJson] = useState('');
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [expDataset, setExpDataset] = useState('searchconsole');
   const [expProject, setExpProject] = useState('');
   const [expLabel, setExpLabel] = useState('');
@@ -53,6 +57,8 @@ export default function Accounts() {
   }, [sa, saEmail]);
 
   const connectBanner = new URLSearchParams(window.location.search).get('connect');
+  // This deployment's own collector — materialised server-side, so it's always in the list.
+  const builtInAccount = accounts?.find((a) => a.builtIn);
 
   // `key` drives the per-button spinner; `onOk` fires after success so each action can report a
   // specific result (e.g. the token-health verdict, or how many properties were discovered).
@@ -80,50 +86,26 @@ export default function Accounts() {
           ? 'Token is broken — reconnect this account'
           : 'Token was revoked — reconnect this account';
 
+  // With a Web client already provisioned this goes straight to Google; otherwise the guided
+  // setup does the Console walkthrough first. Errors are caught — a bare `void connect()` turned
+  // a 409 from /api/oauth/start into a silent unhandled rejection with no feedback at all.
   const connect = async () => {
-    // No Web OAuth client yet (e.g. a bootstrap deployment) → guide the admin to add one in-app.
     if (!state.googleClientId) {
-      setShowOAuthSetup(true);
+      navigate('/accounts/connect-google');
       return;
     }
-    const { url } = await api.connectStart();
-    window.location.href = url;
-  };
-
-  const saveOAuthClient = async () => {
-    setBusyKey('oauth-client');
     try {
-      await api.uploadOAuthClient(clientJson);
-      const { url } = await api.connectStart(); // straight into Google authorization
+      const { url } = await api.connectStart();
       window.location.href = url;
     } catch (e) {
       toast(String(e), 'error');
-      setBusyKey(null);
     }
   };
 
-  const onClientFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setClientJson(String(reader.result ?? ''));
-    reader.onerror = () => toast('Could not read that file', 'error');
-    reader.readAsText(file);
-  };
   const copy = (v: string) => {
     void navigator.clipboard.writeText(v);
     toast('Copied', 'success');
   };
-  const copyable = (v: string) => (
-    <span className="inline-flex items-center gap-1.5">
-      <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{v}</code>
-      <button type="button" onClick={() => copy(v)} className="text-xs text-accent hover:underline">
-        copy
-      </button>
-    </span>
-  );
-  const proj = state.projectId ? `?project=${state.projectId}` : '';
-
   const remove = async (a: Account) => {
     const n = a.propertyCount ?? 0;
     const props = `${n} propert${n === 1 ? 'y' : 'ies'}`;
@@ -168,99 +150,16 @@ export default function Accounts() {
         <p className="mb-3 text-sm text-bad">Connection was cancelled.</p>
       )}
 
-      {showOAuthSetup && (
-        <Card className="mb-4" title="Enable Google sign-in (one-time)">
-          <p className="text-sm text-muted">
-            A Google-account login needs a <strong>Web OAuth client</strong> for this deployment.
-            Google only lets you create it in the Console, so it&apos;s a <strong>one-time</strong>{' '}
-            setup — afterwards, “Connect Google account” goes straight to the Google login and adds
-            the account with all its properties.
-          </p>
-          <ol className="mt-3 list-decimal space-y-3 pl-5 text-sm">
-            <li>
-              <a
-                className="text-accent underline"
-                href={`https://console.cloud.google.com/apis/credentials/consent${proj}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Configure the OAuth consent screen
-              </a>{' '}
-              and add the scope {copyable('https://www.googleapis.com/auth/webmasters.readonly')}.
-              <ul className="mt-1.5 list-disc space-y-1.5 pl-5 text-muted">
-                <li>
-                  <strong>User type:</strong> <strong>Internal</strong> if your project is in a
-                  Google Workspace org and you&apos;ll only authorize accounts inside it (nothing
-                  more to do); otherwise <strong>External</strong>.
-                </li>
-                <li className="text-fg">
-                  <strong>Then click “Publish app.”</strong> This is the step people miss — if you
-                  leave it in <em>Testing</em>, sign-in is <strong>blocked</strong> with “app is
-                  being tested.” (Or, to stay in Testing, add your Google account under{' '}
-                  <strong>Test users</strong>.)
-                </li>
-                <li>
-                  Unverified is fine for your own use — at sign-in, click{' '}
-                  <em>Advanced → Continue</em> to proceed past the warning.
-                </li>
-              </ul>
-            </li>
-            <li>
-              <a
-                className="text-accent underline"
-                href={`https://console.cloud.google.com/apis/credentials${proj}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Create credentials → OAuth client ID → Web application
-              </a>
-              , add these two values, then <strong>Create</strong> and{' '}
-              <strong>download the JSON</strong>:
-              <div className="mt-1.5 space-y-1.5">
-                <div>
-                  <span className="mr-2 text-xs text-muted">JavaScript origin</span>
-                  {copyable(state.jsOrigin ?? '')}
-                </div>
-                <div>
-                  <span className="mr-2 text-xs text-muted">Redirect URI</span>
-                  {copyable(state.redirectUri ?? '')}
-                </div>
-              </div>
-            </li>
-            <li>
-              Paste the downloaded JSON below, then <strong>Enable &amp; connect</strong>.
-            </li>
-          </ol>
-          <div className="mt-3">
-            <label className="text-sm font-medium">Upload the client JSON you downloaded</label>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={onClientFile}
-              className="mt-1 block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:text-fg hover:file:bg-line"
-            />
-            {clientJson && (
-              <p className="mt-1 text-xs text-ok">✓ File loaded — ready to connect.</p>
-            )}
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant="primary"
-              disabled={!clientJson || busy}
-              loading={busyKey === 'oauth-client'}
-              onClick={() => void saveOAuthClient()}
-            >
-              Enable &amp; connect
-            </Button>
-            <Button onClick={() => setShowOAuthSetup(false)}>Cancel</Button>
-          </div>
-        </Card>
-      )}
-
       {!accounts ? (
         <div className="grid place-items-center py-16 text-muted">
           <Spinner className="h-6 w-6" />
         </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          icon="⚿"
+          title="No connections yet"
+          description="Pick one of the three ways to feed Search Console data in, below."
+        />
       ) : (
         <Table>
           <thead>
@@ -295,6 +194,10 @@ export default function Accounts() {
                 <Td>
                   {a.type === 'bigquery_export' ? (
                     <Badge tone="ok">import</Badge>
+                  ) : a.builtIn && (a.propertyCount ?? 0) === 0 ? (
+                    // Nothing has granted it access yet, so "valid" would be a claim we haven't
+                    // tested — the token health of an impersonated SA is asserted, not measured.
+                    <Badge tone="warn">awaiting access</Badge>
                   ) : (
                     <Badge tone={HEALTH_TONE[a.tokenHealth]}>{a.tokenHealth}</Badge>
                   )}
@@ -338,24 +241,25 @@ export default function Accounts() {
                         Check health
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      loading={busyKey === `rm:${a.id}`}
-                      onClick={() => void remove(a)}
-                    >
-                      Remove
-                    </Button>
+                    {a.builtIn ? (
+                      <Button size="sm" onClick={() => setSetupOpen(true)}>
+                        Set up
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        loading={busyKey === `rm:${a.id}`}
+                        onClick={() => void remove(a)}
+                      >
+                        Remove
+                      </Button>
+                    )}
                   </div>
                 </Td>
               </tr>
             ))}
-            {accounts.length === 0 && (
-              <tr>
-                <Td className="px-3 py-6 text-muted">No connections yet — add one below.</Td>
-              </tr>
-            )}
           </tbody>
         </Table>
       )}
@@ -363,51 +267,156 @@ export default function Accounts() {
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted">
         Add a connection
       </h2>
-      <Card title="Service account (recommended for agencies)">
-        <p className="text-sm text-muted">
-          <strong>1.</strong> In Search Console, add the email below as a user (Restricted is
-          enough) on each property you manage. <strong>2.</strong> Register it here —{' '}
-          <strong>just once</strong>: it then collects every property that has granted it access, so
-          you don&apos;t add a separate account per property.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <code className="rounded bg-surface-2 px-2 py-1 text-sm">{sa || '…'}</code>
-          <Button size="sm" disabled={!sa} onClick={() => void navigator.clipboard.writeText(sa)}>
-            Copy
-          </Button>
-        </div>
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <Field label="service account email">
-            <TextInput
-              className="w-96"
-              value={saEmail}
-              onChange={(e) => setSaEmail(e.target.value)}
-            />
-          </Field>
-          <Field label="label">
-            <TextInput value={saLabel} onChange={(e) => setSaLabel(e.target.value)} />
-          </Field>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card title="Google account">
+          <p className="text-sm text-muted">
+            Sign in with a Google account and collect every Search Console property it can see.
+            Best when you own the properties. Needs a one-time setup in the Cloud Console —
+            we walk you through it.
+          </p>
           <Button
+            className="mt-3"
             variant="primary"
-            disabled={busy || !saEmail}
-            loading={busyKey === 'sa-register'}
-            onClick={() =>
-              void run(
-                'sa-register',
-                () => api.addServiceAccount(saEmail, saLabel),
-                () => {
-                  toast('Service account registered', 'success');
-                  setSaLabel('');
-                },
-              )
-            }
+            onClick={() => navigate('/accounts/connect-google')}
           >
-            Register
+            Connect a Google account
           </Button>
-        </div>
-      </Card>
+        </Card>
 
-      <Card className="mt-5" title="Connect a BigQuery export">
+        <Card title="Service account">
+          <p className="text-sm text-muted">
+            No Console setup at all. Grant this deployment&apos;s collector access in Search
+            Console and it picks up every property that grants it — the usual choice for agencies
+            managing clients&apos; properties.
+          </p>
+          <Button className="mt-3" variant="primary" onClick={() => setSetupOpen(true)}>
+            Show me how
+          </Button>
+        </Card>
+
+        <Card title="BigQuery export">
+          <p className="text-sm text-muted">
+            Already running Google&apos;s native Bulk Export? Point ConsoleVault at that dataset
+            and get the whole reporting layer with no API collection and no row ceiling.
+          </p>
+          <Button className="mt-3" onClick={() => setShowExport((v) => !v)}>
+            {showExport ? 'Hide' : 'Connect an export'}
+          </Button>
+        </Card>
+      </div>
+
+      {setupOpen && (
+        <Card className="mt-5" title="Give the collector access to your properties">
+          <p className="text-sm text-muted">
+            Add this email as a user on each Search Console property you manage —{' '}
+            <strong>Restricted</strong> is enough. It&apos;s already registered as a connection
+            above; nothing else to set up here.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <code className="rounded bg-surface-2 px-2 py-1 text-sm">{sa || '…'}</code>
+            <Button size="sm" disabled={!sa} onClick={() => copy(sa)}>
+              Copy
+            </Button>
+          </div>
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-muted">
+            <li>
+              Open{' '}
+              <a
+                className="text-accent underline"
+                href="https://search.google.com/search-console"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Search Console ↗
+              </a>{' '}
+              and pick a property.
+            </li>
+            <li>
+              <strong>Settings → Users and permissions → Add user</strong>, paste the email above,
+              permission <strong>Restricted</strong>.
+            </li>
+            <li>
+              Repeat for each property, then come back and press{' '}
+              <strong>Check for properties</strong>.
+            </li>
+          </ol>
+          <div className="mt-4 flex gap-2">
+            {builtInAccount && (
+              <Button
+                variant="primary"
+                disabled={busy}
+                loading={busyKey === `disc:${builtInAccount.id}`}
+                onClick={() =>
+                  void run(
+                    `disc:${builtInAccount.id}`,
+                    () => api.discover(builtInAccount.id),
+                    (r) =>
+                      toast(
+                        r.count === 0
+                          ? 'No properties yet — check the email was added in Search Console'
+                          : `Found ${r.count} ${r.count === 1 ? 'property' : 'properties'}`,
+                        r.count === 0 ? 'info' : 'success',
+                      ),
+                  )
+                }
+              >
+                Check for properties
+              </Button>
+            )}
+            <Button onClick={() => setSetupOpen(false)}>Done</Button>
+          </div>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-xs text-muted">
+              Advanced — register a different service account
+            </summary>
+            <div className="mt-2">
+              <p className="text-xs text-muted">
+                Only needed if you want to collect via a service account from another project.
+              </p>
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <Field label="service account email">
+                  <TextInput
+                    className="w-96"
+                    value={saEmail}
+                    onChange={(e) => setSaEmail(e.target.value)}
+                  />
+                </Field>
+                <Field label="label">
+                  <TextInput value={saLabel} onChange={(e) => setSaLabel(e.target.value)} />
+                </Field>
+                <Button
+                  disabled={busy || !saEmail || saEmail === sa}
+                  loading={busyKey === 'sa-register'}
+                  onClick={() =>
+                    void run(
+                      'sa-register',
+                      async () => {
+                        const account = await api.addServiceAccount(saEmail, saLabel);
+                        return api.discover(account.id);
+                      },
+                      (r) => {
+                        toast(
+                          `Registered — found ${r.count} ${r.count === 1 ? 'property' : 'properties'}`,
+                          'success',
+                        );
+                        setSaEmail('');
+                        setSaLabel('Search Console');
+                      },
+                    )
+                  }
+                >
+                  Register
+                </Button>
+              </div>
+            </div>
+          </details>
+        </Card>
+      )}
+
+      <Card
+        className={cx('mt-5', !showExport && 'hidden')}
+        title="Connect a BigQuery export"
+      >
         <p className="text-sm text-muted">
           Already streaming Search Console data into BigQuery with Google&apos;s native{' '}
           <strong>Bulk Export</strong>? Point ConsoleVault at that dataset to get the full reporting

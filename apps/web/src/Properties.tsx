@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Account, DashboardListItem, Property } from '@consolevault/types';
 import { api } from './api';
@@ -52,6 +52,61 @@ export default function Properties() {
   useEffect(() => {
     load().catch((e: unknown) => toast(String(e), 'error'));
   }, []);
+
+  // --- Start collecting as soon as something is tracked ------------------------------------
+  // Tracking a property used to do nothing visible until the next daily run. Now it fires a
+  // scoped pipeline run. Batched briefly so tracking twelve properties is one run, not twelve —
+  // and flushed on unmount, because navigating away mid-wait would otherwise silently drop it.
+  const pendingCollect = useRef<Set<string>>(new Set());
+  const collectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushCollection = () => {
+    if (collectTimer.current) {
+      clearTimeout(collectTimer.current);
+      collectTimer.current = null;
+    }
+    const ids = [...pendingCollect.current];
+    pendingCollect.current = new Set();
+    if (ids.length === 0) return;
+    // Fire-and-forget: over-firing is harmless (reconcile skips in-flight cells and Cloud Tasks
+    // dedups on task name), whereas blocking the UI on a workflow execution is not.
+    api
+      .runPipeline(ids)
+      .then(() =>
+        toast(
+          `Collecting — ${ids.length} propert${ids.length === 1 ? 'y' : 'ies'} queued`,
+          'success',
+        ),
+      )
+      .catch((e: unknown) => toast(String(e), 'error'));
+  };
+
+  const queueCollection = (props: Property[]) => {
+    // Native-export properties are read from their Bulk Export dataset; there is nothing to collect.
+    const ids = props.filter((p) => p.source !== 'native_export').map((p) => p.id);
+    if (ids.length === 0) return;
+    for (const id of ids) pendingCollect.current.add(id);
+    if (collectTimer.current) clearTimeout(collectTimer.current);
+    collectTimer.current = setTimeout(flushCollection, 4000);
+  };
+
+  useEffect(() => flushCollection, []);
+
+  // While anything is tracked-but-not-yet-collected, refresh so the status chip moves on its own.
+  // Bounded: collection of a first property takes minutes, and we don't want a tab polling forever
+  // if a property never collects (no data, a broken token).
+  const awaitingFirstRows = (properties ?? []).some(
+    (p) => p.included && p.source !== 'native_export' && !p.status?.lastCollectedDate,
+  );
+  useEffect(() => {
+    if (!awaitingFirstRows) return;
+    let polls = 0;
+    const id = setInterval(() => {
+      if (++polls > 40) return clearInterval(id); // ~10 min at 15s
+      void load().catch(() => {});
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [awaitingFirstRows]);
 
   const accountName = (id: string) =>
     accounts.find((a) => a.id === id)?.displayName ?? id.slice(0, 8);
@@ -130,6 +185,7 @@ export default function Properties() {
     );
     try {
       await api.patchProperty(p.id, { included: !p.included });
+      if (!p.included) queueCollection([p]);
     } catch (e) {
       toast(String(e), 'error');
       await load();
@@ -139,6 +195,9 @@ export default function Properties() {
   const bulk = async (included: boolean) => {
     const ids = [...selected];
     if (ids.length === 0) return;
+    const newlyTracked = included
+      ? (properties ?? []).filter((p) => ids.includes(p.id) && !p.included)
+      : [];
     try {
       await api.bulkSetIncluded(ids, included);
       setSelected(new Set());
@@ -147,6 +206,7 @@ export default function Properties() {
         `${included ? 'Now tracking' : 'Stopped tracking'} ${ids.length} propert${ids.length === 1 ? 'y' : 'ies'}`,
         'success',
       );
+      queueCollection(newlyTracked);
     } catch (e) {
       toast(String(e), 'error');
     }
@@ -176,10 +236,10 @@ export default function Properties() {
         <EmptyState
           icon="▦"
           title="No properties yet"
-          description="Connect a Google account and run Discover to list the properties available to track."
+          description="Connect a data source, then run Discover to list the properties available to track."
           action={
             <Link to="/accounts">
-              <Button variant="primary">Go to Accounts</Button>
+              <Button variant="primary">Go to Connections</Button>
             </Link>
           }
         />

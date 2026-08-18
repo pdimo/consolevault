@@ -105,12 +105,12 @@ export default function Overview() {
           }
           description={
             ov.accounts.total === 0
-              ? 'Connect a Google account to start pulling Search Console data into your warehouse.'
+              ? 'Connect a data source — a Google account, this deployment\'s service account, or a BigQuery export.'
               : 'Run discovery to list the properties available to track.'
           }
           action={
             <Link to="/accounts">
-              <Button variant="primary">Go to Accounts</Button>
+              <Button variant="primary">Go to Connections</Button>
             </Link>
           }
         />

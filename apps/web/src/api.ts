@@ -205,8 +205,12 @@ export const api = {
     http<Task[]>(`/api/tasks?${new URLSearchParams(q).toString()}`),
   logs: (propertyId?: string) =>
     http<LogRow[]>(`/api/logs${propertyId ? `?propertyId=${propertyId}` : ''}`),
-  runPipeline: () =>
-    http<{ execution: string; state: string }>('/api/pipeline/run', { method: 'POST' }),
+  /** No ids = the full daily pipeline. With ids = a scoped run for just those properties. */
+  runPipeline: (propertyIds?: string[]) =>
+    http<{ execution: string; state: string; scoped: boolean }>('/api/pipeline/run', {
+      method: 'POST',
+      ...(propertyIds?.length ? { body: JSON.stringify({ propertyIds }) } : {}),
+    }),
   requeueErrors: () => http<{ requeued: number }>('/api/tasks/requeue-errors', { method: 'POST' }),
   queues: () =>
     http<{ name: string; state: string; maxDispatchesPerSecond: number }[]>('/api/queues'),
