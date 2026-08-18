@@ -49,13 +49,16 @@ After ~10 minutes it prints your **Management UI URL** and a **one-time admin pa
 Open the printed URL and **sign in with the admin password** — no Google OAuth client, no consent
 screen. Then connect your Search Console data the easy way:
 
-1. **Connections** (left sidebar) → scroll to **Add a connection → Service account** → **Copy** the
-   `sa-collector@…` email.
+1. **Connections** (left sidebar) → the `sa-collector@…` service account is already listed →
+   **Set up** → **Copy** the email.
 2. In [Search Console](https://search.google.com/search-console), open a property you manage →
    **Settings → Users and permissions → Add user** → paste that email (Restricted is enough).
-3. Back in **Connections**, paste the same email into the Service-account card → **Register**
-   (once — it then collects every property that grants it access).
-4. **Jobs → Run now** — ConsoleVault discovers your properties and starts collecting.
+   Repeat for each property — one email covers them all.
+3. Back in **Connections**, click **Check for properties**.
+4. **Properties** → switch on the ones you want. Collection starts straight away.
+
+Prefer to sign in with a Google account instead? That needs a one-time Cloud Console setup —
+**Connections → Connect a Google account** walks you through it.
 
 Prefer to look around first? **Settings → Sample data** loads a demo client with no real data.
 

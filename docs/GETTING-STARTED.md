@@ -83,21 +83,27 @@ Open the Management UI link. Because signing in uses your own Google account, Co
 **Web OAuth client** — and Google only lets you create that in the Console. The good news: **the app
 shows you the exact values to paste**, so there's no guesswork.
 
-The first screen is a **setup wizard**. Follow its four steps:
+The first screen is a **setup wizard**. Follow its steps:
 
-1. **Consent screen** — it links you straight to the right page. Set an app name + your email, add
-   the one read‑only scope it shows you, and **publish to “In production.”**
-   > Why “In production”? An app left in “Testing” makes Google expire your login every 7 days.
-   > Publishing (you can stay _unverified_) gives you a stable login. This is the single most common
-   > setup mistake — the wizard reminds you.
-2. **Create a Web OAuth client** — the wizard shows the exact **JavaScript origin** and **redirect
+1. **Create the OAuth app** — it links you straight to Google Auth Platform → **Get started**. An
+   app name, your email, and audience **External** (or **Internal** for a Workspace org).
+   > You do **not** need to add a scope under Data Access. ConsoleVault asks for
+   > `webmasters.readonly` during sign-in itself, so it appears on the consent screen either way.
+2. **Publish the app** — under **Audience**, click **Publish app**. Skip this and Google blocks
+   sign-in with “has not completed the Google verification process.”
+   > Staying in “Testing” with yourself as a test user also works, but Google then expires your
+   > login every 7 days and collection stops silently. This is the most common setup mistake.
+3. **Create a Web OAuth client** — the wizard shows the exact **JavaScript origin** and **redirect
    URI** to paste (they're your app's own address). Click **Copy**, paste, create, and **download
    the JSON**.
-3. **Upload it** — back in Cloud Shell, run `./setup.sh` again. It notices the missing client, asks
-   for the file you just downloaded, and stores it securely. Nothing sensitive is ever pasted into
-   the browser.
-4. **Come back and refresh** — click **“I've finished setup — check again.”** The sign‑in screen
+4. **Upload it** — back in Cloud Shell, run `./setup.sh` again. It notices the missing client, asks
+   for the file you just downloaded, and stores it securely. (On this Terraform path you can't yet
+   sign in, so the upload happens in your own deploy context rather than the browser.)
+5. **Come back and refresh** — click **“I've finished setup — check again.”** The sign‑in screen
    appears.
+
+Full reference, including what each error means:
+**[CONNECT-GOOGLE-ACCOUNT.md](./CONNECT-GOOGLE-ACCOUNT.md)**.
 
 > Prefer not to use a consent screen at all? There's a **service‑account** path too — add the
 > collector's email (shown in the wizard) as a user on your Search Console property. See

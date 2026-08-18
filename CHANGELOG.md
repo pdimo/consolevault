@@ -12,6 +12,93 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ## [Unreleased]
 
+### Added
+
+- **Collection starts when you track a property.** Tracking used to only set a flag; data appeared
+  at the next daily run (or after manually hitting "Run pipeline now"). Tracking now fires a
+  collection run scoped to just those properties, and the Properties page refreshes itself so the
+  status chip moves without a reload.
+- **A guided "Connect a Google account" wizard** (Connections → Connect a Google account) — the
+  one-time Cloud Console setup, one step at a time, with project-scoped deep links and the exact
+  values to paste. Plus **[docs/CONNECT-GOOGLE-ACCOUNT.md](./docs/CONNECT-GOOGLE-ACCOUNT.md)** as
+  the reference version, with an error-to-cause table.
+
+### Changed
+
+- **Connections names its three kinds outright** — Google account, service account, BigQuery
+  export — instead of stacking two forms under the table.
+- **The deployment's own collector service account is listed automatically.** Its email was always
+  derivable, so making you copy it into a form and press Register was ceremony; that form now only
+  exists (under Advanced) for registering a service account from another project. The built-in
+  connection can't be removed — revoke its access in Search Console instead.
+
+### Fixed
+
+- **The OAuth setup guidance told you to do something impossible.** It said to add the
+  `webmasters.readonly` scope on a Console page that has no scope control, and the scope was never
+  needed: ConsoleVault requests it in the authorization request, so it shows on the consent screen
+  regardless. Registering it under Data Access only matters if you submit for Google verification.
+- **The step that actually blocks sign-in was a footnote.** Publishing the app (or adding yourself
+  as a test user) is now its own step, quoting the exact `Access blocked: … has not completed the
+  Google verification process` error, and honest that test-user mode expires the login after 7 days
+  and stops collection silently.
+- Dropped the stale "click *Advanced → Continue*" instruction — a published app requesting only
+  this sensitive scope shows a plain **Continue** button.
+- The UI now refreshes its config after you upload an OAuth client (it previously kept reporting
+  the old state), and surfaces errors from starting a connection instead of failing silently.
+
+### Upgrade notes
+
+- Re-run `./bootstrap.sh` (or `terraform apply`) to pick up the updated daily workflow. Until you
+  do, new images run against the old workflow definition and a scoped run is simply ignored — it
+  falls back to a full pipeline run rather than failing.
+
+## [0.1.8] - 2026-08-17
+
+### Fixed
+
+- OAuth client secrets are parsed correctly when refreshing account tokens regardless of how the
+  downloaded JSON nests them (`web` / `installed` / flat).
+
+## [0.1.7] - 2026-08-16
+
+### Added
+
+- Upload the OAuth client JSON straight from the browser with a file picker, plus much more
+  prominent Publish-app / test-user guidance in the setup panel.
+
+## [0.1.6] - 2026-08-16
+
+### Added
+
+- Self-guided in-app OAuth client setup: project-scoped Console links, copy buttons for the exact
+  values, and Internal vs External guidance.
+
+## [0.1.5] - 2026-08-14
+
+### Added
+
+- Consent-screen guidance and one-time framing in the setup panel.
+
+## [0.1.4] - 2026-08-14
+
+### Changed
+
+- The Accounts page is now **Connections**, framed around "add a connection" — it covers Google
+  accounts, service accounts and BigQuery exports, not just accounts.
+
+## [0.1.3] - 2026-08-14
+
+### Added
+
+- In-app Web OAuth client setup, which enables Google sign-in on bootstrap installs (previously
+  only the Terraform path could configure one).
+
+### Changed
+
+- Reverted the earlier hiding of the "Connect Google account" button — it is always visible again,
+  now that the in-app path can provision the client.
+
 ## [0.1.2] - 2026-08-14
 
 ### Fixed

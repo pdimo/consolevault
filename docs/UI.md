@@ -18,7 +18,12 @@ SPA fallback) — no separate web deploy.
 - `components/AppShell.tsx` — grouped left sidebar + top bar (theme toggle, user, sign out), responsive
   mobile drawer. Add a page by editing the `NAV` array + a `<Route>` in `App.tsx`.
 - `components/ui.tsx` — `Card`, `Button`, `Badge`, `StatCard`, `Table`/`Th`/`Td`, `SegmentedControl`,
-  `SearchInput`, `Select`, `TextInput`, `Field`, `EmptyState`, `Spinner`, `PageHeader`, `cx`.
+  `SearchInput`, `Select`, `TextInput`, `Field`, `EmptyState`, `Spinner`, `PageHeader`, `CopyField`,
+  `Step`, `cx`.
+  - `CopyField` + `Step` are for guided setup — walking an admin through Console steps we can't
+    perform for them (`SetupWizard.tsx`, `ConnectGoogle.tsx`). `CopyField` renders an exact
+    value-to-paste with a copy button; `Step` is a numbered instruction. Use them rather than
+    hand-rolling per page, so the guided flows can't drift apart.
 - `components/feedback.tsx` — `FeedbackProvider` with `useToast()` (transient toasts) and
   `useConfirm()` (promise-based confirm dialog for destructive actions).
 - `components/charts.tsx` — themed Recharts wrappers: `TrendArea`, `Donut`, `Bars` (colors come from

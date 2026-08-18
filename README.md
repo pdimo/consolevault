@@ -1,18 +1,50 @@
 # ConsoleVault
 
-Self-deploy, open-source (Apache 2.0) GCP product that extracts Google Search Console
-search-analytics data via the **API** into **your own BigQuery** — backfilled, complete, and
-multi-property — deployed entirely by Terraform and managed through a Cloud Run UI.
+**All your Google Search Console data, in your own BigQuery — backfilled 16 months, every
+property, one warehouse.** Open source (Apache 2.0), self-deployed into your own Google Cloud
+project. Your data never touches anyone else's infrastructure.
 
-Built for SEO/marketing agencies managing many GSC properties across multiple Google accounts
-who need backdated, complete, multi-property data in one warehouse. See [`SPEC.md`](./SPEC.md)
-for the full design (source of truth).
+## Install it in one click
+
+<div align="center">
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/pdimo/consolevault.git&cloudshell_tutorial=.cloudshell/tutorial.md&cloudshell_print=.cloudshell/welcome.txt)
 
-![ConsoleVault client report — KPIs, clicks-over-time, brand vs non-brand](./docs/images/client-report.png)
+</div>
 
-## Screenshots
+Click the button, type `./bootstrap.sh`, and answer **two questions from a menu** — which project,
+and where your data should live. About ten minutes later it prints your **URL and admin password**.
+
+**Nothing to install. No Terraform, no image build, no Google OAuth client, no consent screen, no
+command-line flags.** It runs entirely in your browser via Cloud Shell.
+
+<!-- PENDING ASSET — uncomment once the file exists:
+![Installing ConsoleVault from the Cloud Shell button](./docs/images/install.gif)
+-->
+
+|                             |                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| **1. Click the button**     | Cloud Shell opens in your browser with ConsoleVault already cloned. Run `./bootstrap.sh`. |
+| **2. Pick two things**      | Your Google Cloud project, and your data location (United States, Europe, Australia — Sydney, …) — both from a numbered menu. |
+| **3. Sign in**              | It prints a URL and a one-time admin password. Open, sign in, and connect your Search Console data. |
+
+> Your data **location is permanent**, which is why the menu asks up front. Re-running
+> `./bootstrap.sh` is safe — it's idempotent.
+
+Then add your Search Console data: open **Connections**, and either grant the shown
+`sa-collector@…` email access in Search Console (no Google setup at all), or connect a Google
+account ([guided walkthrough](./docs/CONNECT-GOOGLE-ACCOUNT.md)). Track a property and collection
+starts immediately.
+
+**Prefer full control?** Large or advanced installs can deploy via **Terraform** instead —
+least-privilege dataset-scoped IAM, a billing budget, and Google sign-in. See
+**[docs/DEPLOY.md](./docs/DEPLOY.md)**. Both paths deploy into your own project; they don't mix.
+
+---
+
+## What you get
+
+![ConsoleVault client report — KPIs, clicks-over-time, brand vs non-brand](./docs/images/client-report.png)
 
 |                                                                                               |                                                                                      |
 | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -26,6 +58,10 @@ for the full design (source of truth).
 
 _(Screenshots use the built-in **Sample data** demo client — no real data.)_
 
+Built for SEO/marketing agencies managing many GSC properties across multiple Google accounts who
+need backdated, complete, multi-property data in one warehouse. See [`SPEC.md`](./SPEC.md) for the
+full design (source of truth).
+
 ## Why self-deploy (the OAuth / CASA advantage)
 
 `https://www.googleapis.com/auth/webmasters.readonly` is a **sensitive** scope. A central hosted
@@ -35,28 +71,6 @@ dev/test/staging** apps. Because each agency **self-deploys its own OAuth client
 project for its own data**, ConsoleVault qualifies for that exception — no consent-screen
 verification, no CASA. This is a structural advantage; do not drift to a central-hosted model
 without budgeting for CASA.
-
-## Deploy
-
-**Not technical? Use the one-command installer.** Click **Open in Cloud Shell** above (or open
-[Cloud Shell](https://shell.cloud.google.com) and `git clone` this repo), then run:
-
-```bash
-./bootstrap.sh
-```
-
-**No Terraform, no image build, no Google OAuth client.** It pulls prebuilt public images and asks
-just two things from a **menu** — which project, and where your data should live (United States,
-Europe, Australia — Sydney, …) — then deploys everything and prints your **URL + a one-time admin
-password**. Sign in with that password (no consent screen), then **Connections → Add a connection →
-Service account**: add the shown `sa-collector@…` email to your Search Console properties,
-**Register**, and **Jobs → Run now**. That's it.
-
-> The data **location is permanent** — the menu makes you pick it up front. Re-running is safe.
-
-**Advanced / large installs** can use the full **Terraform** path instead (least-privilege,
-dataset-scoped IAM, billing budget, OAuth sign-in): see **[docs/DEPLOY.md](./docs/DEPLOY.md)**. Both
-paths deploy into your own project; they don't mix.
 
 ## Already using Google's native BigQuery export?
 

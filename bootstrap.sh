@@ -305,7 +305,7 @@ info "Retrieve the password any time: gcloud secrets versions access latest --se
 echo
 bold "Next steps (all in the browser — no OAuth client, no consent screen)"
 info "1. Open ${API_URL} and sign in with the admin password above."
-info "2. Add this collector as a user on each Search Console property you manage:"
+info "2. In Search Console, add this collector as a user (Restricted) on each property you manage:"
 info "     ${SA_COLLECTOR}"
-info "3. In the UI: Connections → Add a connection → Service account → paste that email → Register."
-info "4. Include the properties you want and run the pipeline (Jobs → Run now)."
+info "3. In the UI: Connections → Set up → Check for properties."
+info "4. Properties → switch on the ones you want. Collection starts straight away."

@@ -24,14 +24,16 @@ scenarios below.
 | Scenario                              | When it applies                                                   | Consent-screen user type | Publishing status         | Refresh-token lifetime    | Verification / CASA                                                                                                                                  |
 | ------------------------------------- | ----------------------------------------------------------------- | ------------------------ | ------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A — Workspace org**                 | Your GCP project lives inside a Google Workspace organization     | **Internal**             | n/a (internal to the org) | **Stable**                | **None.** Internal-use exemption (SPEC §1). Only users in your org can authorize.                                                                    |
-| **B — Standalone, production**        | Standalone project, no org (e.g. owned by a `@gmail.com` account) | **External**             | **In production**         | **Stable**                | Unverified-app warning on first consent (bypass: _Advanced → Continue_). No CASA unless you publish publicly. **Recommended for non-org deployers.** |
+| **B — Standalone, production**        | Standalone project, no org (e.g. owned by a `@gmail.com` account) | **External**             | **In production**         | **Stable**                | Unverified-app notice on first consent → **Continue**. No CASA unless you publish publicly. **Recommended for non-org deployers.**                   |
 | **B-test — Standalone, testing only** | Same as B but you skip publishing                                 | **External**             | **Testing**               | **⚠ 7-day expiry**        | Add yourself under _Test users_. Tokens die after 7 days — **dev/throwaway only, never for ongoing collection.**                                     |
 | **C — Service account only**          | You don't want an OAuth consent screen at all                     | n/a (no consent screen)  | n/a                       | n/a (uses SA credentials) | The client adds the **service-account email** as a user on their Search Console property.                                                            |
 
-> **Why publishing status matters (Scenario B):** Google expires refresh tokens after **7 days**
-> for External apps left in _Testing_. ConsoleVault backfills and collects daily, so a 7-day
-> token death would silently zero your data (the SPEC §3 "#1 operational risk"). **Publish to
-> "In production"** to get stable, non-expiring refresh tokens. The app can stay _unverified_.
+> **Why publishing status matters (Scenario B):** Google issues refresh tokens that expire in
+> **7 days** to External apps whose publishing status is _Testing_ — the exemption for that rule
+> covers only apps requesting name/email/profile, and ConsoleVault also requests
+> `webmasters.readonly`, so it applies to us. ConsoleVault backfills and collects daily, so a
+> 7-day token death would silently zero your data (the SPEC §3 "#1 operational risk"). **Publish
+> the app** to get stable refresh tokens. It can stay _unverified_.
 
 ---
 
@@ -39,18 +41,31 @@ scenarios below.
 
 All in the Google Cloud Console for **your** project. None of this can be done via CLI/Terraform.
 
-### 1. Configure the consent screen ("APIs & Services → Google Auth Platform")
+### 1. Create the OAuth app (Google Auth Platform)
 
+Open [Google Auth Platform](https://console.cloud.google.com/auth/overview) for your project and
+click **Get started**. For the in-app walkthrough of exactly this, see
+**[CONNECT-GOOGLE-ACCOUNT.md](./CONNECT-GOOGLE-ACCOUNT.md)**.
+
+- **App Information:** app name + user-support email (shown only to you on a self-deploy).
 - **Audience → User type:**
   - Scenario A: **Internal** (only available if the project is in a Workspace org).
   - Scenario B: **External**.
-- **Branding:** App name, user-support email, developer-contact email.
-- **Data Access → Add scopes:** add `https://www.googleapis.com/auth/webmasters.readonly`.
-- **Publishing status:**
+- **Contact Information:** developer-contact email.
+- **Publishing status** — the step people miss:
   - Scenario A: nothing more (internal apps are usable by org users immediately).
-  - Scenario B: **Publish app → "In production"** (for stable tokens). The first consent shows
-    "Google hasn't verified this app" → _Advanced → Continue_ (fine for single-admin).
+  - Scenario B: **Audience → Publish app**. The first consent shows a notice that Google hasn't
+    verified the app — click **Continue**. Unverified is fine for single-admin use.
   - Scenario B-test only: leave in Testing and add each Google account under **Test users**.
+  - Do **neither** and sign-in fails outright with
+    `Access blocked: … has not completed the Google verification process` (Error 403:
+    `access_denied`).
+
+> **You do not need to add the scope under Data Access.** ConsoleVault requests
+> `webmasters.readonly` in the authorization request itself, so the consent screen shows it whether
+> or not it is registered on the consent screen. Registering scopes there only matters if you
+> submit the app for Google verification — which self-deploying is designed to avoid (see the CASA
+> note above). Verified on a fresh install that never touched Data Access and connected fine.
 
 ### 2. Create the OAuth client ("APIs & Services → Credentials")
 
