@@ -2,8 +2,28 @@
 # All heavy logic lives in the orchestrator worker (TypeScript). __ORCHESTRATOR_URL__ is replaced
 # by Terraform with the orchestrator Cloud Run URL. Calls use OIDC as the workflow's SA
 # (sa-workflows); the orchestrator is IAM-private.
+#
+# Two modes:
+#   - Full run (no argument) — the Cloud Scheduler cron and "Run pipeline now". Every step.
+#   - Scoped run ({"propertyIds": [...]}) — fired when the admin tracks a property, so data
+#     starts arriving immediately instead of waiting for the next cron. Only reconcile +
+#     enqueue, limited to those properties; discovery and the warehouse-wide refreshes are
+#     skipped because nothing about them is property-specific.
+#
+# Executing with no argument leaves `input` empty, so map.get returns null and default() wins
+# (verified against Cloud Workflows before this was written).
 main:
+  params: [input]
   steps:
+    - init:
+        assign:
+          - property_ids: ${default(map.get(input, "propertyIds"), null)}
+          - scoped: ${property_ids != null}
+    - route:
+        switch:
+          - condition: ${scoped}
+            next: reconcile
+        next: discover
     - discover:
         call: http.post
         args:
@@ -19,6 +39,8 @@ main:
           timeout: 1800
           auth:
             type: OIDC
+          body:
+            propertyIds: ${property_ids}
         result: reconcile_result
     - enqueue:
         call: http.post
@@ -27,7 +49,19 @@ main:
           timeout: 1800
           auth:
             type: OIDC
+          body:
+            propertyIds: ${property_ids}
         result: enqueue_result
+    - skip_refreshes:
+        switch:
+          - condition: ${scoped}
+            next: done_scoped
+        next: refresh_materialized
+    - done_scoped:
+        return:
+          scoped: true
+          reconcile: ${reconcile_result.body}
+          enqueue: ${enqueue_result.body}
     - refresh_materialized:
         call: http.post
         args:
@@ -54,6 +88,7 @@ main:
         result: dedup_result
     - done:
         return:
+          scoped: false
           discover: ${discover_result.body}
           reconcile: ${reconcile_result.body}
           enqueue: ${enqueue_result.body}

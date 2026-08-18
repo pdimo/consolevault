@@ -20,14 +20,23 @@ export function computeMissingDays(allDays: string[], terminalDays: Set<string>)
   return allDays.filter((d) => !terminalDays.has(d));
 }
 
-/** Reconcile all included properties: write pending Task docs for missing cells. */
-export async function reconcile(): Promise<{ properties: number; created: number }> {
+/**
+ * Reconcile included properties: write pending Task docs for missing cells.
+ *
+ * `propertyIds` scopes the sweep to just those properties — used when the admin tracks a
+ * property and we collect it immediately rather than waiting for the daily run. Omit it for
+ * the full daily sweep.
+ */
+export async function reconcile(
+  propertyIds?: string[],
+): Promise<{ properties: number; created: number }> {
   const propertyRepo = new PropertyRepository();
   const taskRepo = new TaskRepository();
+  const scope = propertyIds?.length ? new Set(propertyIds) : null;
   // Native-export properties are read from their Bulk Export dataset via adapter views (SPEC §12) —
   // never collected via the API, so they never enter the planner.
   const properties = (await propertyRepo.list()).filter(
-    (p) => p.included && p.source !== 'native_export',
+    (p) => p.included && p.source !== 'native_export' && (!scope || scope.has(p.id)),
   );
 
   const toCreate: Task[] = [];

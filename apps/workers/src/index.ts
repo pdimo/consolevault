@@ -60,8 +60,15 @@ app.post('/collect', async (req, reply) => {
 // --- orchestrator (sa-workflows), called by the daily Workflow ---
 // Pass the warehouse so native Bulk Export connections are (re)discovered daily (SPEC §12).
 app.post('/discover-all', async () => discoverAllAccounts(secretStore, warehouse));
-app.post('/reconcile', async () => reconcile());
-app.post('/enqueue', async () => enqueueAll());
+
+// A scoped run (the workflow's `propertyIds` argument, set when an admin tracks a property)
+// limits reconcile/enqueue to those properties. Absent or empty → the full daily sweep.
+const scopeOf = (body: unknown): string[] | undefined => {
+  const ids = (body as { propertyIds?: unknown } | null)?.propertyIds;
+  return Array.isArray(ids) && ids.length ? ids.filter((id): id is string => typeof id === 'string') : undefined;
+};
+app.post('/reconcile', async (req) => reconcile(scopeOf(req.body)));
+app.post('/enqueue', async (req) => enqueueAll(scopeOf(req.body)));
 app.post('/token-health-sweep', async () => tokenHealthSweep(secretStore, app.log));
 app.post('/refresh-materialized', async () => refreshMaterialized());
 app.post('/refresh-dashboards', async () => refreshDashboards());

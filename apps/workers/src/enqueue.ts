@@ -60,7 +60,13 @@ async function ensureQueue(accountId: string): Promise<string> {
   return queuePath;
 }
 
-export async function enqueueAll(): Promise<{
+/**
+ * Enqueue pending tasks as Cloud Tasks, one queue per account.
+ *
+ * `propertyIds` scopes the dispatch to tasks for those properties — the scoped counterpart to
+ * {@link reconcile}, so tracking a property collects it now instead of at the next daily run.
+ */
+export async function enqueueAll(propertyIds?: string[]): Promise<{
   enqueued: number;
   deduped: number;
   failed: number;
@@ -72,10 +78,12 @@ export async function enqueueAll(): Promise<{
 
   const taskRepo = new TaskRepository();
   const pending = await taskRepo.listByStatus('pending');
+  const scope = propertyIds?.length ? new Set(propertyIds) : null;
 
   const byAccount = new Map<string, Task[]>();
   for (const t of pending) {
     if (!t.accountId) continue;
+    if (scope && !scope.has(t.propertyId)) continue;
     let list = byAccount.get(t.accountId);
     if (!list) {
       list = [];

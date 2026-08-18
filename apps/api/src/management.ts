@@ -351,10 +351,23 @@ export function registerManagementRoutes(app: FastifyInstance): void {
     return { requeued };
   });
 
-  // --- Run the daily pipeline now ---
-  app.post('/api/pipeline/run', async () => {
-    const [execution] = await executionsClient.createExecution({ parent: workflowParent });
-    return { execution: execution.name, state: execution.state };
+  // --- Run the pipeline now ---
+  // With no body: the full daily DAG. With `propertyIds`: a scoped run (reconcile + enqueue for
+  // just those properties), which is what tracking a property fires so data starts arriving
+  // immediately instead of at the next cron. sa-api already holds roles/workflows.invoker, so
+  // routing this through the workflow argument needs no extra IAM.
+  app.post('/api/pipeline/run', async (req) => {
+    const body = (req.body ?? {}) as { propertyIds?: unknown };
+    const propertyIds = Array.isArray(body.propertyIds)
+      ? body.propertyIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    const [execution] = await executionsClient.createExecution({
+      parent: workflowParent,
+      ...(propertyIds.length
+        ? { execution: { argument: JSON.stringify({ propertyIds }) } }
+        : {}),
+    });
+    return { execution: execution.name, state: execution.state, scoped: propertyIds.length > 0 };
   });
 
   // --- Per-account queue status ---
