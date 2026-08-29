@@ -10,6 +10,7 @@ import type { Property } from '@consolevault/types';
 import { api } from './api';
 import { useConfirm, useToast } from './components/feedback';
 import { Badge, Button, Card, Field, Select, Spinner, TextInput } from './components/ui';
+import LookerCard from './components/LookerCard';
 
 type Member = { id: string; siteUrl: string; propertyType: string; source: string };
 
@@ -186,6 +187,8 @@ export default function ClientConfigureView() {
           {members.length === 0 && <li className="py-2 text-sm text-muted">No properties.</li>}
         </ul>
       </Card>
+
+      <LookerCard className="mt-5" target={{ type: 'client', id }} />
     </div>
   );
 }

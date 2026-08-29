@@ -19,6 +19,7 @@ import { registerOAuthRoutes } from './oauth.js';
 import { registerManagementRoutes } from './management.js';
 import { registerDashboardRoutes } from './dashboards.js';
 import { registerSemanticGroupRoutes } from './semantic-groups.js';
+import { registerLookerRoutes } from './looker.js';
 import { HttpError } from './errors.js';
 
 const app = Fastify({ logger: true, trustProxy: true });
@@ -46,6 +47,7 @@ registerApiRoutes(app);
 registerManagementRoutes(app);
 registerDashboardRoutes(app);
 registerSemanticGroupRoutes(app);
+registerLookerRoutes(app);
 
 // Serve the built SPA if bundled into the image; SPA fallback for client routes.
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));

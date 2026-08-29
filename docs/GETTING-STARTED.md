@@ -142,9 +142,10 @@ you're in.
 
 ## Optional — connect Looker Studio
 
-Your data is plain BigQuery, so you can build your own dashboards too. Point Looker Studio at the
-`gsc_views.*_all` wildcard views to report across every property at once — see
-[LOOKER.md](./LOOKER.md).
+Your data is plain BigQuery, so you can build your own dashboards too. **Settings → Looker Studio →
+Open in Looker Studio** opens a report in your own account with the `gsc_views.*_all` wildcard views
+already connected, so it reports across every property at once; a client's **Configure** tab has the
+same button scoped to that client, safe to share with them. See [LOOKER.md](./LOOKER.md).
 
 ---
 

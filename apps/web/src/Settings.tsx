@@ -4,6 +4,7 @@ import { api } from './api';
 import { isDemoOn, setDemo } from './demo/fixtures';
 import { useToast } from './components/feedback';
 import { Button, Card, Field, PageHeader, Spinner, Switch, TextInput } from './components/ui';
+import LookerCard from './components/LookerCard';
 
 export default function Settings() {
   const toast = useToast();
@@ -94,6 +95,29 @@ export default function Settings() {
           </Button>
         </div>
       </Card>
+
+      <LookerCard className="mt-5">
+        <p className="mb-3 text-sm text-muted">
+          Paste a Looker Studio report id to use it as the template every link copies — yours, or a
+          shared one. Find it in the report&apos;s URL:{' '}
+          <code>lookerstudio.google.com/reporting/&lt;REPORT_ID&gt;</code>. Whoever opens the link
+          needs at least view access to that report; leave it empty to get a blank report with the
+          data sources bound.
+        </p>
+        <Field label="Template report id">
+          <TextInput
+            className="w-96"
+            placeholder="e.g. 1a2b3c4d-5e6f-7890-abcd-ef1234567890"
+            value={settings.lookerTemplateReportId ?? ''}
+            onChange={(e) => setSettings({ ...settings, lookerTemplateReportId: e.target.value })}
+          />
+        </Field>
+        <div className="mt-4">
+          <Button variant="primary" loading={saving} onClick={() => void save()}>
+            Save
+          </Button>
+        </div>
+      </LookerCard>
 
       <Card title="Sample data" className="mt-5">
         <div className="flex flex-wrap items-center justify-between gap-3">

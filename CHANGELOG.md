@@ -14,6 +14,16 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ### Added
 
+- **Open in Looker Studio, in one click.** Settings gains a Looker Studio card that opens a report in
+  your own account with the three `gsc_views.*_all` wildcard views already connected — no data source
+  wizard, no SQL. A client's Configure tab has the same button scoped to that client: the link binds
+  a query with `source_table IN (…that client's properties)` and the backfill-window date bound baked
+  in, so it's shareable with the client and can't be filtered its way to another client's data. Set a
+  **template report id** (Settings) and every link copies that report and repoints its data sources at
+  your project instead of starting blank. The card also hands you the calculated fields the report
+  needs — `SUM(position * impressions) / SUM(impressions)` and `SUM(clicks) / SUM(impressions)` —
+  because averaging `position` or `ctr` directly gives a number that belongs to no query and no day.
+  See [docs/LOOKER.md](./docs/LOOKER.md).
 - **Collection starts when you track a property.** Tracking used to only set a flag; data appeared
   at the next daily run (or after manually hitting "Run pipeline now"). Tracking now fires a
   collection run scoped to just those properties, and the Properties page refreshes itself so the

@@ -266,7 +266,8 @@ The planner each run: `expected_days(window, PT) − cells already terminal` = t
 - **Coverage & verification (make strong):** per-property **coverage heatmap** (16-month grid × cell state) — the "is my data actually complete?" view; backfill progress; totals-vs-detail **anomaly %** per property (turns the privacy gap into a visible trust metric); freshness indicator; **"Verify my setup" health check** (auth ok, test query returns rows, BQ writable, queue dispatching, scheduler firing — the "Doctor" pattern).
 - **Jobs/logs:** live queue status; searchable task log + one-click re-collect; dead-letter view; per-account quota/throttle status.
 - **Costs/settings:** cost panel (§11); safety-valve config; global defaults (offset, backfill window, schedule, dataset/location, partition expiry).
-- **Later:** config export/import, Looker Studio template links (reuse [[Google Search Console via Bigquery]]), failure/gap webhooks, multi-user + roles.
+- **Looker Studio template links:** one-click [Linking API](https://developers.google.com/looker-studio/integrate/linking-api) handoff — a "create report" URL with the `gsc_views.*_all` wildcard views bound as data sources (`queries`/`pages`/`totals` aliases), agency-wide from Settings or scoped to one client from its Configure tab. A client-scoped link binds `CUSTOM_QUERY` sources with `source_table IN (…members)` and the backfill-window date bound baked in, so it is shareable with the client. An optional **template report id** (a runtime Setting) makes each link COPY that report and repoint its sources at this deployment; unset, the link opens a blank report with the sources ready. The report itself is Google-side state, so the repo ships the binding, not the layout.
+- **Later:** config export/import, failure/gap webhooks, multi-user + roles.
 
 ---
 

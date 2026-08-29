@@ -112,6 +112,17 @@ export interface DoctorResult {
   ok: boolean;
   checks: { name: string; ok: boolean; detail: string }[];
 }
+/** The "Open in Looker Studio" link for a target, plus what the report needs to be correct. */
+export interface LookerTemplate {
+  projectId: string;
+  url: string;
+  templateReportId: string;
+  scope: { type: string; id: string; name: string; sourceTables: string[] } | null;
+  /** Properties whose data the `_all` views can't reach (cross-region native export). */
+  excluded: string[];
+  views: { alias: string; name: string; viewId: string; grain: string }[];
+  calculatedFields: { name: string; formula: string; note: string }[];
+}
 export interface LogRow {
   task_id: string;
   property: string;
@@ -226,6 +237,12 @@ export const api = {
   patchGroup: (id: string, patch: Partial<PropertyGroup>) =>
     http<PropertyGroup>(`/api/groups/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteGroup: (id: string) => http<void>(`/api/groups/${id}`, { method: 'DELETE' }),
+
+  // looker studio
+  lookerTemplate: (target?: { type: string; id: string }) =>
+    http<LookerTemplate>(
+      target ? `/api/looker/template?type=${target.type}&id=${target.id}` : '/api/looker/template',
+    ),
 
   // settings
   getSettings: () => http<Settings>('/api/settings'),
