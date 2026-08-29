@@ -299,6 +299,12 @@ export interface Settings {
    * this on reveals the guided one-time Console export step + live status. Off = estimates only.
    */
   billingExportEnabled?: boolean;
+  /**
+   * Looker Studio report id used as the template for "Open in Looker Studio" links. Empty = the
+   * link opens a fresh report with the views bound; set it and every link copies that report
+   * instead, repointed at this deployment (SPEC §10).
+   */
+  lookerTemplateReportId?: string;
 }
 
 /**

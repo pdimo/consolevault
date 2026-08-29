@@ -128,7 +128,8 @@ Analytics land in BigQuery as **one table per property** in datasets `gsc_byProp
 
 - **Wildcard views** (`gsc_views.byProperty_all` / `byPage_all` / `totals_all`) span every property
   with a `source_table` column — query the whole warehouse at once. They self-maintain (new
-  properties appear automatically). Connect Looker Studio to these: **[docs/LOOKER.md](./docs/LOOKER.md)**.
+  properties appear automatically). **Settings → Open in Looker Studio** hands them to Looker Studio
+  in one click, agency-wide or scoped to one client: **[docs/LOOKER.md](./docs/LOOKER.md)**.
 - **Property groups** create impression-weighted union views across a chosen set of properties.
 
 ## Data freshness
