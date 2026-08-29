@@ -184,20 +184,69 @@ export function compileFilters(
   return { where: `WHERE ${clauses.join(' AND ')}`, params };
 }
 
+/** RE2 (BigQuery) has no lookaround and no backreferences; JS `RegExp` accepts both. */
+const UNSUPPORTED_RE2 = /\(\?[=!<]|\\[1-9]/;
+/** Characters that make an RE2 pattern; escaped when a brand term is taken literally. */
+const RE_META = /[.*+?^${}()|[\]\\]/g;
+const WORDISH = /[a-z0-9_]/i;
+
+/** True when a user-supplied pattern is something BigQuery's RE2 will actually run. */
+function isUsableRegex(src: string): boolean {
+  if (!src || UNSUPPORTED_RE2.test(src)) return false;
+  try {
+    new RegExp(src);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Build a boolean SQL expression that is true when `query` contains any brand term (case-insensitive),
- * registering the LIKE params. Shared by the segment filter and the brand split. Returns '' (no-op)
- * when there are no terms.
+ * A literal brand term as an RE2 fragment: whole-word, allowing a plural or possessive, so "adt"
+ * matches "adt", "adts" and "adt's" but not "adtran" or "gadget". Word boundaries are only added
+ * where the term's own edge is a word character (`.com.au` has no leading boundary to assert), and
+ * internal whitespace is loosened so "adt  security" still matches "adt security".
  */
-export function brandMatchExpr(terms: string[], params: Record<string, unknown>): string {
-  const t = terms.map((s) => s.trim()).filter(Boolean);
-  if (!t.length) return '';
-  return `(${t
-    .map((term, i) => {
-      params[`bt${i}`] = `%${term.toLowerCase()}%`;
-      return `LOWER(query) LIKE @bt${i}`;
-    })
-    .join(' OR ')})`;
+function literalPattern(term: string): string {
+  const body = term.replace(RE_META, '\\$&').replace(/\s+/g, '\\s+');
+  const lead = WORDISH.test(term[0]!) ? '\\b' : '';
+  const tail = WORDISH.test(term[term.length - 1]!) ? "(?:'s|’s|s)?\\b" : '';
+  return `${lead}${body}${tail}`;
+}
+
+/**
+ * Compile brand terms into ONE case-insensitive RE2 alternation. A term wrapped in slashes (`/…/`)
+ * is the user's own regex, used as written — the escape hatch for misspellings, optional words and
+ * anchors. Everything else is a literal (see `literalPattern`). A `/…/` term RE2 cannot run falls
+ * back to a literal match rather than failing the whole report. Returns '' when there are no terms.
+ */
+export function compileBrandPattern(terms: string[]): string {
+  const parts: string[] = [];
+  for (const raw of terms) {
+    const term = raw.trim();
+    if (!term) continue;
+    const custom = term.length > 2 && term.startsWith('/') && term.endsWith('/');
+    const src = custom ? term.slice(1, -1) : '';
+    parts.push(custom && isUsableRegex(src) ? `(?:${src})` : literalPattern(term.toLowerCase()));
+  }
+  return parts.length ? `(?i)${parts.join('|')}` : '';
+}
+
+/**
+ * Build a boolean SQL expression that is true when `query` matches any brand term, registering the
+ * compiled pattern as a param. Shared by the segment filter and the brand split/trend. Returns ''
+ * (no-op) when there are no terms. The param name is fixed per call site so repeated calls with the
+ * same terms are idempotent.
+ */
+export function brandMatchExpr(
+  terms: string[],
+  params: Record<string, unknown>,
+  name = 'brandRe',
+): string {
+  const pattern = compileBrandPattern(terms);
+  if (!pattern) return '';
+  params[name] = pattern;
+  return `REGEXP_CONTAINS(LOWER(query), @${name})`;
 }
 
 /** Brand vs non-brand split: two rows (segment = brand|nonbrand) with the standard metrics. */

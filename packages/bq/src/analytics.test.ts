@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   brandMatchExpr,
+  compileBrandPattern,
   brandSplitSql,
   brandTimeseriesSql,
   compileFilters,
@@ -133,49 +134,102 @@ describe('compileFilters', () => {
     expect(compileFilters(base, { requirePage: true }).where).toContain('page IS NOT NULL');
   });
 
-  it('applies the brand segment (contains-any) at query time', () => {
+  it('applies the brand segment at query time', () => {
     const brand = compileFilters({
       ...base,
       segment: 'brand',
       brandTerms: ['adt', 'adt security'],
     });
-    expect(brand.where).toContain('LOWER(query) LIKE @bt0 OR LOWER(query) LIKE @bt1');
-    expect(brand.params.bt0).toBe('%adt%');
-    expect(brand.params.bt1).toBe('%adt security%');
+    expect(brand.where).toContain('REGEXP_CONTAINS(LOWER(query), @brandRe)');
+    expect(brand.params.brandRe).toBe(
+      String.raw`(?i)\badt(?:'s|’s|s)?\b|\badt\s+security(?:'s|’s|s)?\b`,
+    );
   });
 
   it('non-brand segment negates the brand match and excludes null queries', () => {
     const { where } = compileFilters({ ...base, segment: 'nonbrand', brandTerms: ['adt'] });
-    expect(where).toContain('(query IS NOT NULL AND NOT (LOWER(query) LIKE @bt0))');
+    expect(where).toContain('(query IS NOT NULL AND NOT REGEXP_CONTAINS(LOWER(query), @brandRe))');
   });
 
   it('ignores the segment when no brand terms are defined', () => {
     const { where } = compileFilters({ ...base, segment: 'brand', brandTerms: [] });
-    expect(where).not.toContain('@bt0');
+    expect(where).not.toContain('@brandRe');
+  });
+});
+
+describe('compileBrandPattern', () => {
+  /** Run the compiled RE2-ish pattern through JS RegExp — close enough to assert match semantics. */
+  const matches = (terms: string[], query: string): boolean => {
+    const src = compileBrandPattern(terms);
+    return new RegExp(src.replace('(?i)', ''), 'i').test(query.toLowerCase());
+  };
+
+  it('matches a literal term as a whole word, not as a substring', () => {
+    expect(matches(['adt'], 'adt alarm cost')).toBe(true);
+    expect(matches(['adt'], 'adt-security review')).toBe(true);
+    expect(matches(['adt'], 'adtran switches')).toBe(false);
+    expect(matches(['adt'], 'best gadget 2026')).toBe(false);
+  });
+
+  it('allows a plural or possessive on a literal term', () => {
+    expect(matches(['nike'], 'nikes on sale')).toBe(true);
+    expect(matches(['nike'], "nike's returns policy")).toBe(true);
+    expect(matches(['nike'], 'nikeplus app')).toBe(false);
+  });
+
+  it('escapes regex metacharacters in literal terms and loosens internal spaces', () => {
+    expect(matches(['adt.com.au'], 'adt.com.au login')).toBe(true);
+    expect(matches(['adt.com.au'], 'adtxcomxau login')).toBe(false);
+    expect(matches(['adt  security'], 'adt security reviews')).toBe(true);
+  });
+
+  it('takes a /slash-wrapped/ term as a regex verbatim', () => {
+    expect(compileBrandPattern(['/adt ?security/'])).toBe('(?i)(?:adt ?security)');
+    expect(matches(['/adt ?security/'], 'adtsecurity au')).toBe(true);
+    expect(matches(['/^adt/'], 'adt alarms')).toBe(true);
+    expect(matches(['/^adt/'], 'cheap adt alarms')).toBe(false);
+  });
+
+  it('falls back to a literal when a /regex/ is not runnable by RE2', () => {
+    // Unbalanced group, and a lookahead RE2 rejects: neither may break the whole report.
+    expect(compileBrandPattern(['/adt(/'])).toBe(String.raw`(?i)/adt\(/`);
+    expect(compileBrandPattern(['/adt(?=x)/'])).toBe(String.raw`(?i)/adt\(\?=x\)/`);
+  });
+
+  it('ignores blank terms and returns no pattern when nothing is left', () => {
+    expect(compileBrandPattern([' ', ''])).toBe('');
+    expect(compileBrandPattern([])).toBe('');
   });
 });
 
 describe('brand split', () => {
-  it('brandMatchExpr ORs case-insensitive LIKEs and registers params', () => {
+  it('brandMatchExpr registers one compiled pattern and is idempotent', () => {
     const params: Record<string, unknown> = {};
     const expr = brandMatchExpr(['ADT', ' Foo '], params);
-    expect(expr).toBe('(LOWER(query) LIKE @bt0 OR LOWER(query) LIKE @bt1)');
-    expect(params.bt0).toBe('%adt%');
-    expect(params.bt1).toBe('%foo%');
+    expect(expr).toBe('REGEXP_CONTAINS(LOWER(query), @brandRe)');
+    expect(params.brandRe).toBe(compileBrandPattern(['adt', 'foo']));
+    // Re-registering the same terms (segment filter + brand split share a params bag) is a no-op.
+    expect(brandMatchExpr(['ADT', ' Foo '], params)).toBe(expr);
+    expect(Object.keys(params)).toEqual(['brandRe']);
     expect(brandMatchExpr([], params)).toBe('');
   });
 
   it('splits into brand/non-brand rows and excludes null queries', () => {
-    const sql = brandSplitSql('`t`', 'WHERE 1=1', '(LOWER(query) LIKE @bt0)');
-    expect(sql).toContain("IF((LOWER(query) LIKE @bt0), 'brand', 'nonbrand') AS segment");
+    const sql = brandSplitSql('`t`', 'WHERE 1=1', 'REGEXP_CONTAINS(LOWER(query), @brandRe)');
+    expect(sql).toContain(
+      "IF(REGEXP_CONTAINS(LOWER(query), @brandRe), 'brand', 'nonbrand') AS segment",
+    );
     expect(sql).toContain('AND query IS NOT NULL');
     expect(sql).toContain('GROUP BY segment');
   });
 
-  it('brand timeseries splits clicks per day by segment', () => {
-    const sql = brandTimeseriesSql('`t`', 'WHERE 1=1', '(LOWER(query) LIKE @bt0)', 'week');
-    expect(sql).toContain('SUM(IF((LOWER(query) LIKE @bt0), clicks, 0)) AS brand');
-    expect(sql).toContain('SUM(IF(NOT (LOWER(query) LIKE @bt0), clicks, 0)) AS nonbrand');
+  it('brand timeseries splits clicks and impressions per bucket by segment', () => {
+    const expr = 'REGEXP_CONTAINS(LOWER(query), @brandRe)';
+    const sql = brandTimeseriesSql('`t`', 'WHERE 1=1', expr, 'week');
+    expect(sql).toContain(`SUM(IF(${expr}, clicks, 0)) AS brand`);
+    expect(sql).toContain(`SUM(IF(NOT ${expr}, clicks, 0)) AS nonbrand`);
+    expect(sql).toContain(`SUM(IF(${expr}, impressions, 0)) AS brandImpr`);
+    expect(sql).toContain(`SUM(IF(NOT ${expr}, impressions, 0)) AS nonbrandImpr`);
     expect(sql).toContain('DATE_TRUNC(data_date, WEEK(MONDAY))');
   });
 });
