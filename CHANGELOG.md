@@ -22,9 +22,20 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
   one-time Cloud Console setup, one step at a time, with project-scoped deep links and the exact
   values to paste. Plus **[docs/CONNECT-GOOGLE-ACCOUNT.md](./docs/CONNECT-GOOGLE-ACCOUNT.md)** as
   the reference version, with an error-to-cause table.
+- **A share-of-branded-search widget** on the client report (wherever brand terms are set), replacing
+  the old "Brand vs non-brand" card. It leads with the _movement_ in brand share — the change in
+  percentage points across the period — over a share-over-time chart on a fixed 0–100% axis, with the
+  brand/non-brand table and click volumes underneath. Direction is shown neutrally, not as good or
+  bad: rising brand share can mean brand demand grew or that non-brand rankings decayed, and only you
+  have the context to tell those apart.
 
 ### Changed
 
+- **Brand terms classify by regex, not substring.** A plain term now matches as a whole word (plural
+  and possessive included), so `adt` classifies "adt alarms" and "adt's warranty" as brand but no
+  longer counts "adtran" or "gadget". Wrapping a term in slashes makes it a regex —
+  `/adt ?security/` — for misspellings, optional words and anchors. Affects the brand/non-brand
+  segment, the split and the share widget everywhere they appear.
 - **Connections names its three kinds outright** — Google account, service account, BigQuery
   export — instead of stacking two forms under the table.
 - **The deployment's own collector service account is listed automatically.** Its email was always
@@ -49,6 +60,11 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ### Upgrade notes
 
+- Brand/non-brand numbers may shift slightly after upgrading — whole-word matching is stricter than
+  the old substring match, so a term that was over-matching will now report less brand traffic.
+  Nothing is reprocessed (classification has always been query-time); review your brand terms on the
+  property or rollup Configure tab if a target relied on partial-word matching, and wrap the term in
+  slashes to get the old behaviour back (`/adt/`).
 - Re-run `./bootstrap.sh` (or `terraform apply`) to pick up the updated daily workflow. Until you
   do, new images run against the old workflow definition and a scoped run is simply ignored — it
   falls back to a full pipeline run rather than failing.
