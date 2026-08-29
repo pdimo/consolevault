@@ -46,13 +46,22 @@ export function TrendArea({
   xKey,
   series,
   height = 220,
+  yPercent = false,
+  yDomain,
+  legend = false,
 }: {
   data: Record<string, unknown>[];
   xKey: string;
   /** `dashed` renders a fill-free dashed line — used for the comparison-period overlay. */
   series: { key: string; name: string; color: string; dashed?: boolean }[];
   height?: number;
+  /** Render the Y axis + tooltip as percentages (values are already 0–100, not fractions). */
+  yPercent?: boolean;
+  /** Fix the Y scale — e.g. `[0, 100]` for a share, so the line isn't auto-zoomed into noise. */
+  yDomain?: [number, number];
+  legend?: boolean;
 }) {
+  const fmtY = yPercent ? (v: number) => `${Math.round(v)}%` : compact;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 6, right: 8, bottom: 0, left: -12 }}>
@@ -65,8 +74,17 @@ export function TrendArea({
           ))}
         </defs>
         <XAxis dataKey={xKey} {...axisProps} tickFormatter={(v: string) => v.slice(5)} />
-        <YAxis {...axisProps} width={42} tickFormatter={compact} />
-        <Tooltip contentStyle={TOOLTIP} />
+        <YAxis
+          {...axisProps}
+          width={yPercent ? 48 : 42}
+          {...(yDomain ? { domain: yDomain } : {})}
+          tickFormatter={fmtY}
+        />
+        <Tooltip
+          contentStyle={TOOLTIP}
+          formatter={(v: number) => (yPercent ? `${v.toFixed(1)}%` : compact(v))}
+        />
+        {legend && <Legend wrapperStyle={{ fontSize: 12, color: 'var(--muted)' }} />}
         {series.map((s) => (
           <Area
             key={s.key}
