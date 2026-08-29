@@ -12,6 +12,7 @@ import Fastify from 'fastify';
 import type { FastifyError } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
+import { cloudLoggingOptions, loadConfig } from '@consolevault/config';
 import { getHealth } from './health.js';
 import { registerApiRoutes } from './routes.js';
 import { authHook, registerAuthRoutes } from './auth.js';
@@ -19,9 +20,10 @@ import { registerOAuthRoutes } from './oauth.js';
 import { registerManagementRoutes } from './management.js';
 import { registerDashboardRoutes } from './dashboards.js';
 import { registerSemanticGroupRoutes } from './semantic-groups.js';
+import { resyncAlerting } from './alerting.js';
 import { HttpError } from './errors.js';
 
-const app = Fastify({ logger: true, trustProxy: true });
+const app = Fastify({ logger: cloudLoggingOptions, trustProxy: true });
 
 app.setErrorHandler((err: FastifyError, _req, reply) => {
   const status = err instanceof HttpError ? err.status : (err.statusCode ?? 500);
@@ -65,6 +67,9 @@ app
   .listen({ port, host: '0.0.0.0' })
   .then((address) => {
     app.log.info(`consolevault-api listening on ${address}`);
+    // Attach the saved alert email to any policy a terraform apply added since the last Settings
+    // save — otherwise that policy fires an incident that emails nobody.
+    void resyncAlerting(loadConfig().projectId, app.log);
   })
   .catch((err: unknown) => {
     app.log.error(err);

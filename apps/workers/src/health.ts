@@ -13,15 +13,19 @@ import type { TokenHealth } from '@consolevault/types';
 export async function tokenHealthSweep(
   secretStore: SecretStore,
   logger: FastifyBaseLogger,
-): Promise<{ checked: number; unhealthy: number }> {
+): Promise<{ checked: number; unhealthy: number; skipped: number }> {
   const accountRepo = new AccountRepository();
   const accounts = await accountRepo.list();
   let unhealthy = 0;
+  let skipped = 0;
 
   for (const account of accounts) {
     // BigQuery-export connections have no GSC token to sweep (SPEC §12) — skip so they don't get
     // flagged unhealthy and trip a false token-health alert.
-    if (account.type === 'bigquery_export') continue;
+    if (account.type === 'bigquery_export') {
+      skipped++;
+      continue;
+    }
     let health: TokenHealth;
     try {
       const client = await authClientForAccount(account, secretStore);
@@ -45,5 +49,10 @@ export async function tokenHealthSweep(
       );
     }
   }
-  return { checked: accounts.length, unhealthy };
+  const checked = accounts.length - skipped;
+  // A sweep that probed nothing returns 200 exactly like a clean one, so the HTTP log alone can't
+  // tell "all healthy" from "the account list came back empty". Emit the count every run so the
+  // sweep's own liveness is observable, and so `checked: 0` is greppable.
+  logger.info({ event: 'token_health_sweep', checked, unhealthy, skipped }, 'token-health sweep');
+  return { checked, unhealthy, skipped };
 }
