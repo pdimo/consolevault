@@ -6,6 +6,12 @@
  */
 
 import type { DashboardFilters, MatchRule } from '@consolevault/types';
+import {
+  RANK_BUCKETS,
+  RANK_TIERS,
+  rankBucketPredicate,
+  rankTierPredicate,
+} from './rank-buckets.js';
 
 export type Rollup = 'day' | 'week' | 'month';
 
@@ -295,17 +301,68 @@ GROUP BY key
 ORDER BY clicks DESC, impressions DESC`;
 }
 
-/** Impressions per ranking tier per day (stacked-area ranking-segment view). */
+/**
+ * Impressions per ranking tier per day (stacked-area ranking-segment view). Tier edges come from
+ * the shared ladder (`RANK_TIERS`) so this trend and the rank-bucket heatmap can't drift apart.
+ */
 export function positionBucketsSql(from: string, where: string): string {
+  const cols = RANK_TIERS.map(
+    (t) => `  SUM(IF(${rankTierPredicate(t)}, impressions, 0)) AS ${t.key}`,
+  ).join(',\n');
   return `SELECT FORMAT_DATE('%Y-%m-%d', data_date) AS date,
-  SUM(IF(position <= 3, impressions, 0)) AS top3,
-  SUM(IF(position > 3 AND position <= 10, impressions, 0)) AS p4_10,
-  SUM(IF(position > 10 AND position <= 20, impressions, 0)) AS p11_20,
-  SUM(IF(position > 20 AND position <= 50, impressions, 0)) AS p21_50,
-  SUM(IF(position > 50, impressions, 0)) AS p50plus
+${cols}
 FROM ${from} ${where}
 GROUP BY date
 ORDER BY date`;
+}
+
+/** What a heatmap cell counts. `count` counts units; the others sum that unit's metric. */
+export type RankWeight = 'count' | 'impressions' | 'clicks';
+
+/**
+ * Rank-bucket heatmap: one row per entity (page or query), one column per `RANK_BUCKETS` bucket.
+ *
+ * This is the answer to the average-position problem — a page whose queries sit at 1 and 25 reports
+ * an average near 24, which describes neither; the row of cells shows both. The weighted `position`
+ * comes back alongside precisely so the UI can show the average being contradicted.
+ *
+ * Each entity is broken into UNITS that are ranked one at a time, and it's the unit that lands in a
+ * bucket — a page's units are its queries ("where do this page's queries rank"), a query's units are
+ * the days it ran ("how much does this query's rank move"). Units are collapsed to a single
+ * impression-weighted position in a subquery first, so a query that ranks differently on mobile and
+ * desktop counts once rather than appearing in two buckets, and the cells sum to the row totals.
+ *
+ * Callers must constrain `query IS NOT NULL` (`compileFilters(..., { requireQuery: true })`) — the
+ * report is query-grained, so Discover rows (page + country only) have nothing to bucket.
+ */
+export function rankHeatmapSql(
+  from: string,
+  where: string,
+  dim: 'query' | 'page',
+  weight: RankWeight = 'count',
+  limit = 100,
+): string {
+  const unit = dim === 'page' ? 'query' : 'data_date';
+  const cell = (pred: string) =>
+    weight === 'count' ? `COUNTIF(${pred})` : `SUM(IF(${pred}, ${weight}, 0))`;
+  const cols = RANK_BUCKETS.map((b) => `  ${cell(rankBucketPredicate(b))} AS ${b.key}`).join(',\n');
+  return `SELECT key,
+  COUNT(*) AS units,
+  SUM(clicks) AS clicks,
+  SUM(impressions) AS impressions,
+  SAFE_DIVIDE(SUM(position * impressions), SUM(impressions)) AS position,
+${cols}
+FROM (
+  SELECT ${dim} AS key, ${unit} AS unit,
+    SUM(clicks) AS clicks,
+    SUM(impressions) AS impressions,
+    SAFE_DIVIDE(SUM(position * impressions), SUM(impressions)) AS position
+  FROM ${from} ${where}
+  GROUP BY key, unit
+)
+GROUP BY key
+ORDER BY impressions DESC, clicks DESC
+LIMIT ${Math.min(Math.max(limit, 1), 1000)}`;
 }
 
 /** Per-query weighted position + ctr + impressions for the CTR-vs-position scatter. */

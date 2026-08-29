@@ -14,6 +14,17 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ### Added
 
+- **Rank-bucket heatmap, instead of trusting average position.** GSC's `position` is one
+  floating-point average, and it lies whenever the distribution is lopsided — ranking 1st for one
+  query and 25th for twenty averages to about 24, which describes neither. A new **Rank distribution**
+  panel on the client report shows where a page's queries (or a query's days) actually sit across
+  `1 · 2 · 3 · 4–5 · 6–10 · 11–20 · 21–50 · 51+`, with the misleading average beside it for contrast.
+  Cells can count queries, impressions or clicks.
+- **Two pre-aggregated BI views** — `gsc_views.rank_buckets_daily` and `gsc_views.rank_buckets_by_page`
+  — rolling the wildcard views up to one row per day × property × [page ×] rank bucket, so the same
+  heatmap is instant in Looker Studio without scanning query-grained rows. They're created and
+  refreshed alongside the wildcard views; see [docs/LOOKER.md](./docs/LOOKER.md).
+
 - **Collection starts when you track a property.** Tracking used to only set a flag; data appeared
   at the next daily run (or after manually hitting "Run pipeline now"). Tracking now fires a
   collection run scoped to just those properties, and the Properties page refreshes itself so the
@@ -25,6 +36,10 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
 
 ### Changed
 
+- **One canonical rank ladder.** The "Impressions by ranking tier" trend now takes its edges from the
+  same definition the heatmap and the BI views use, so the app can't show two different meanings of
+  "top 3". Tier boundaries moved from `<= 3` / `> 3` to half-open ranges (`1–3` is `position < 4`),
+  which reads a 3.4 average as the rank-3 result it is; the top tier is now labelled `51+`.
 - **Connections names its three kinds outright** — Google account, service account, BigQuery
   export — instead of stacking two forms under the table.
 - **The deployment's own collector service account is listed automatically.** Its email was always
@@ -40,9 +55,9 @@ See [docs/DEPLOY.md](./docs/DEPLOY.md#updating).
   regardless. Registering it under Data Access only matters if you submit for Google verification.
 - **The step that actually blocks sign-in was a footnote.** Publishing the app (or adding yourself
   as a test user) is now its own step, quoting the exact `Access blocked: … has not completed the
-  Google verification process` error, and honest that test-user mode expires the login after 7 days
+Google verification process` error, and honest that test-user mode expires the login after 7 days
   and stops collection silently.
-- Dropped the stale "click *Advanced → Continue*" instruction — a published app requesting only
+- Dropped the stale "click _Advanced → Continue_" instruction — a published app requesting only
   this sensitive scope shows a plain **Continue** button.
 - The UI now refreshes its config after you upload an OAuth client (it previously kept reporting
   the old state), and surfaces errors from starting a connection instead of failing silently.

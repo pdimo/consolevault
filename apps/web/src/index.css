@@ -98,4 +98,28 @@
   .hm.not_planned {
     background: var(--surface-2);
   }
+
+  /* Rank-bucket heatmap cells — ONE sequential hue (accent) mixed toward the surface in five
+     discrete steps. Mixing against the surface (rather than a fixed white) keeps the ramp monotonic
+     and the text contrast correct in both themes. Driven by step classes from RankHeatmap.tsx. */
+  .rh-0 {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .rh-1 {
+    background: color-mix(in srgb, var(--accent) 24%, var(--surface));
+    color: var(--fg);
+  }
+  .rh-2 {
+    background: color-mix(in srgb, var(--accent) 38%, var(--surface));
+    color: var(--fg);
+  }
+  .rh-3 {
+    background: color-mix(in srgb, var(--accent) 62%, var(--surface));
+    color: var(--fg);
+  }
+  .rh-4 {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
 }

@@ -4,6 +4,7 @@
  */
 
 import { DATASETS } from './schema.js';
+import { rankBucketCaseSql, rankBucketIndexCaseSql } from './rank-buckets.js';
 
 /**
  * Cross-property wildcard views (SPEC §6.1): one row-set spanning every property table in a data
@@ -57,4 +58,53 @@ export function buildUnionViewSql(projectId: string, memberTables: string[]): st
     ${union}
   )
   GROUP BY data_date, query, country, device`;
+}
+
+/**
+ * Pre-aggregated rank-bucket views (SPEC §6.1, reporting layer). Each rolls a wildcard `_all` view
+ * up to one row per day × property × rank bucket, so a BI tool plots the ranking distribution
+ * without scanning millions of query-grained rows on every interaction — which is what keeps a
+ * rank-bucket heatmap instant in Looker Studio.
+ *
+ * `source` is the wildcard view they're derived from; they're (re)created whenever it is.
+ * Device/country are deliberately dropped — carrying them would defeat the pre-aggregation. Query
+ * the `_all` views directly when you need to slice by those.
+ */
+export const RANK_BUCKET_VIEWS: ReadonlyArray<{
+  source: string;
+  viewId: string;
+  /** Extra entity dimension carried through the rollup; `null` = property-level daily distribution. */
+  dim: 'page' | null;
+}> = [
+  { source: 'byProperty_all', viewId: 'rank_buckets_daily', dim: null },
+  { source: 'byPage_all', viewId: 'rank_buckets_by_page', dim: 'page' },
+];
+
+/**
+ * Roll a wildcard view up to day × property × [page ×] rank bucket. Every measure is query-grained,
+ * so rows without a query (totals, Discover) are excluded rather than silently counted as rank 0.
+ */
+export function buildRankBucketViewSql(
+  projectId: string,
+  sourceViewId: string,
+  dim: 'page' | null,
+): string {
+  const entity = dim ? `  ${dim},\n` : '';
+  const group = ['data_date', 'source_table', 'search_type', 'data_state']
+    .concat(dim ? [dim] : [])
+    .concat(['rank_bucket', 'rank_bucket_index'])
+    .join(', ');
+  return `SELECT
+  data_date,
+  source_table,
+  search_type,
+  data_state,
+${entity}  ${rankBucketCaseSql()} AS rank_bucket,
+  ${rankBucketIndexCaseSql()} AS rank_bucket_index,
+  COUNT(DISTINCT query) AS queries,
+  SUM(impressions) AS impressions,
+  SUM(clicks) AS clicks
+FROM \`${projectId}.${DATASETS.views}.${sourceViewId}\`
+WHERE query IS NOT NULL
+GROUP BY ${group}`;
 }

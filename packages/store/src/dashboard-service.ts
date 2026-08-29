@@ -17,6 +17,7 @@ import {
   ctrCurveSql,
   ctrScatterSql,
   queryPagePairsSql,
+  rankHeatmapSql,
   DATASETS,
   fromTable,
   fromUnion,
@@ -26,10 +27,12 @@ import {
   nativeLandingDataset,
   nativePageViewName,
   positionBucketsSql,
+  RANK_BUCKETS,
   strikingDistanceSql,
   timeseriesSql,
   topEntitySql,
   Warehouse,
+  type RankWeight,
   type Rollup,
 } from '@consolevault/bq';
 import type { DashboardFilters, MatchRule, Property } from '@consolevault/types';
@@ -44,6 +47,7 @@ export type ReportName =
   | 'top-pages'
   | 'breakdown'
   | 'position-buckets'
+  | 'rank-heatmap'
   | 'ctr-scatter'
   | 'striking-distance'
   | 'movers'
@@ -61,6 +65,7 @@ export const PRECOMPUTE_REPORTS: ReportName[] = [
   'top-queries',
   'breakdown',
   'position-buckets',
+  'rank-heatmap',
   'ctr-scatter',
   'striking-distance',
   'movers',
@@ -273,6 +278,7 @@ export class DashboardService {
     // Page-dimension reports read byPage, which has no query column.
     const usesPage =
       report === 'top-pages' ||
+      (report === 'rank-heatmap' && q.dim === 'page') ||
       report === 'cannibalization' ||
       report === 'content-decay' ||
       (report === 'movers' && q.dim === 'page') ||
@@ -341,6 +347,25 @@ export class DashboardService {
     if (report === 'position-buckets') {
       const { where, params } = compileFilters(eff);
       return run(positionBucketsSql(from, where), params);
+    }
+    if (report === 'rank-heatmap') {
+      // The report is query-grained whichever dimension it's read by, so the query guard applies to
+      // both — otherwise Discover rows (page + country only) would land in a bucket with no query.
+      const { where, params } = compileFilters(eff, {
+        requireQuery: true,
+        ...(q.dim === 'page' ? { requirePage: true } : {}),
+      });
+      const dim = q.dim === 'page' ? 'page' : 'query';
+      const weight: RankWeight =
+        q.weight === 'impressions' || q.weight === 'clicks' ? q.weight : 'count';
+      const rows = await run(rankHeatmapSql(from, where, dim, weight, 100), params);
+      return {
+        buckets: RANK_BUCKETS.map((b) => ({ key: b.key, label: b.label })),
+        weight,
+        // What one unit IS depends on the dimension — the UI labels the cells with it.
+        unit: dim === 'page' ? ('query' as const) : ('day' as const),
+        rows,
+      };
     }
     if (report === 'ctr-scatter') {
       const { where, params } = compileFilters(eff, { requireQuery: true });

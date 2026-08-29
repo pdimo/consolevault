@@ -10,6 +10,7 @@ import {
   type GroupRow,
   type Kpi,
   type MoverRow,
+  type RankHeatmap as RankHeatmapData,
   type ScatterRow,
   type TsPoint,
 } from './api';
@@ -33,6 +34,7 @@ import { DateRangeMenu, type CompareMode, type Rollup } from './components/repor
 import { FilterChips, type Chip } from './components/report/FilterChips';
 import { MetricDelta } from './components/report/delta';
 import { BreakdownList } from './components/report/BreakdownList';
+import { RankHeatmap, weightLabel, type RankWeight } from './components/report/RankHeatmap';
 import { GroupPanel } from './components/report/GroupPanel';
 import { useToast } from './components/feedback';
 
@@ -387,6 +389,9 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
   const [country, setCountry] = useState<EntityRow[] | null>(null);
   const [buckets, setBuckets] = useState<BucketRow[] | null>(null);
   const [scatter, setScatter] = useState<ScatterRow[] | null>(null);
+  const [heat, setHeat] = useState<RankHeatmapData | null>(null);
+  const [heatDim, setHeatDim] = useState<'query' | 'page'>('query');
+  const [heatWeight, setHeatWeight] = useState<RankWeight>('count');
   const [movers, setMovers] = useState<MoverRow[] | null>(null);
   const [moversPages, setMoversPages] = useState<MoverRow[] | null>(null);
   const [moversDim, setMoversDim] = useState<'query' | 'page'>('query');
@@ -501,6 +506,35 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
       ignore = true;
     };
   }, [type, id, qs, hasBrand, filters.compareMode]);
+
+  // The rank heatmap has its own dimension/weight controls, so it reloads independently of the
+  // report-wide filters rather than refetching every other panel when you flip a toggle.
+  useEffect(() => {
+    let ignore = false;
+    setHeat(null);
+    api
+      .dashboardReport<RankHeatmapData>(
+        type,
+        id,
+        'rank-heatmap',
+        `${qs}&dim=${heatDim}&weight=${heatWeight}`,
+      )
+      .then((d) => {
+        if (!ignore) setHeat(d);
+      })
+      .catch(() => {
+        if (!ignore)
+          setHeat({
+            buckets: [],
+            weight: heatWeight,
+            unit: heatDim === 'page' ? 'query' : 'day',
+            rows: [],
+          });
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [type, id, qs, heatDim, heatWeight]);
 
   const current = kpis?.current;
   const previous = kpis?.previous;
@@ -998,6 +1032,49 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
             <p className="py-12 text-center text-sm text-muted">No data.</p>
           ) : (
             <Bubble data={bubble} xLabel="Position" yLabel="CTR" yPercent />
+          )}
+        </Card>
+      </div>
+
+      {/* Rank distribution — the shape average position hides. Full width: eight bucket columns
+          plus the entity label need the room. */}
+      <div className="mt-5">
+        <Card
+          title="Rank distribution"
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <SegmentedControl<'query' | 'page'>
+                value={heatDim}
+                onChange={setHeatDim}
+                options={[
+                  { value: 'query', label: 'Queries' },
+                  { value: 'page', label: 'Pages' },
+                ]}
+              />
+              <SegmentedControl<RankWeight>
+                value={heatWeight}
+                onChange={setHeatWeight}
+                options={(['count', 'impressions', 'clicks'] as RankWeight[]).map((w) => ({
+                  value: w,
+                  label: weightLabel(w, heatDim === 'page' ? 'query' : 'day'),
+                }))}
+              />
+            </div>
+          }
+        >
+          <p className="mb-3 text-xs text-muted">
+            Average position is a single number over a lopsided distribution — ranking 1st for one
+            query and 25th for twenty averages to about 24, which describes neither. Each row shows
+            where the entity actually ranks: a page across its queries, a query across the days it
+            ran. Its average sits in the last column for comparison.
+          </p>
+          {!heat ? (
+            <Spinner className="mx-auto my-12 h-6 w-6" />
+          ) : (
+            <RankHeatmap
+              data={heat}
+              onPick={(key) => patch(heatDim === 'page' ? { page: key } : { query: key })}
+            />
           )}
         </Card>
       </div>
