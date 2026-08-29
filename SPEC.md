@@ -172,6 +172,8 @@ gsc_byProperty.<sanitized_property>   DATE-partitioned, cluster (query)
 gsc_byPage.<sanitized_property>       DATE-partitioned, cluster (query, page)
 gsc_totals.<sanitized_property>       DATE-partitioned
 gsc_views.byProperty_all / byPage_all wildcard unions across properties
+gsc_views.rank_buckets_daily          pre-aggregated rank distribution (day × property × bucket)
+gsc_views.rank_buckets_by_page        …the same, per page (§6.5)
 task_logs.attempts                    append-only, one row per task attempt
 ```
 
@@ -194,6 +196,27 @@ Load jobs append (can't MERGE), so dedup happens at the **partition** level. Bec
 ### 6.4 Combined properties: raw + query-time view (verified)
 
 Store members raw; union in a view. Rationale: GSC has no native grouping (so it's *our* logic, best kept changeable); non-destructive (can ungroup/regroup/report standalone); **combining isn't SUM** — clicks/impressions add but **CTR and position must be re-weighted**, encoded once in the view; cheap/flexible; the view can prevent domain+child double-counting. Promote a heavy group's view to a scheduled materialised table only as an optimisation.
+
+### 6.5 Rank buckets, not average position
+
+`position` is a **single floating-point average per row**, and that average lies whenever the
+distribution is lopsided: rank 1 for one query plus rank 25 for twenty reports ~24, which describes
+neither outcome. One canonical rank ladder (`packages/bq/src/rank-buckets.ts`) defines the buckets —
+`1 · 2 · 3 · 4–5 · 6–10 · 11–20 · 21–50 · 51+`, half-open on the raw float, so a 3.4 average is a
+rank-3 result — and every rank view reads its edges from there: the in-app heatmap, the coarser
+ranking-tier trend (which nests exactly onto it), and the BI views.
+
+`gsc_views.rank_buckets_daily` / `rank_buckets_by_page` roll the wildcard views up to one row per
+day × property × [page ×] bucket, carrying `queries` / `impressions` / `clicks` plus a sortable
+`rank_bucket_index` (BI tools sort a string dimension alphabetically, putting '11–20' before '4–5').
+Pre-aggregating is what keeps a rank heatmap instant in Looker Studio over millions of rows;
+device/country are dropped deliberately, since carrying them would defeat it — slice on those in the
+`_all` views instead. The views are plain views over the wildcard views, so they're rebuilt in the
+same pass and never go stale.
+
+Ranking units are collapsed to **one weighted position each before bucketing** — a page's unit is a
+query, a query's unit is a day. Otherwise a query ranking 4th on desktop and 12th on mobile would
+appear in two buckets at once and the cells would not sum to the row.
 
 ---
 

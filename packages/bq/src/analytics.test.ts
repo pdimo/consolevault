@@ -9,6 +9,8 @@ import {
   fromTable,
   fromUnion,
   kpisSql,
+  positionBucketsSql,
+  rankHeatmapSql,
   timeseriesSql,
 } from './analytics.js';
 
@@ -200,5 +202,49 @@ describe('sources + builders', () => {
     );
     expect(timeseriesSql('`t`', 'WHERE 1=1', 'month')).toContain('DATE_TRUNC(data_date, MONTH)');
     expect(timeseriesSql('`t`', 'WHERE 1=1', 'day')).toContain('FORMAT_DATE');
+  });
+});
+
+describe('rank buckets', () => {
+  it('the ranking-tier trend takes its edges from the shared ladder', () => {
+    const sql = positionBucketsSql('`t`', 'WHERE 1=1');
+    expect(sql).toContain('SUM(IF(position < 4, impressions, 0)) AS top3');
+    expect(sql).toContain('SUM(IF(position >= 4 AND position < 11, impressions, 0)) AS p4_10');
+    expect(sql).toContain('SUM(IF(position >= 51, impressions, 0)) AS p50plus');
+    expect(sql).toContain('GROUP BY date');
+  });
+
+  it("collapses a page's queries to one rank each before bucketing them", () => {
+    const sql = rankHeatmapSql('`t`', 'WHERE 1=1', 'page', 'count', 20);
+    expect(sql).toContain('SELECT page AS key, query AS unit');
+    expect(sql).toContain('GROUP BY key, unit');
+    expect(sql).toContain('COUNTIF(position < 2) AS r1');
+    expect(sql).toContain('COUNTIF(position >= 51) AS r51');
+    expect(sql).toContain('LIMIT 20');
+  });
+
+  it('spreads a query across the DAYS it ran, so rank volatility shows', () => {
+    expect(rankHeatmapSql('`t`', 'WHERE 1=1', 'query')).toContain(
+      'SELECT query AS key, data_date AS unit',
+    );
+  });
+
+  it('sums the unit metric per bucket for the impression/click weights', () => {
+    expect(rankHeatmapSql('`t`', 'WHERE 1=1', 'query', 'impressions')).toContain(
+      'SUM(IF(position >= 4 AND position < 6, impressions, 0)) AS r4_5',
+    );
+    expect(rankHeatmapSql('`t`', 'WHERE 1=1', 'query', 'clicks')).toContain(
+      'SUM(IF(position >= 4 AND position < 6, clicks, 0)) AS r4_5',
+    );
+  });
+
+  it('returns the weighted average alongside, so the buckets can contradict it', () => {
+    expect(rankHeatmapSql('`t`', 'WHERE 1=1', 'page')).toContain(
+      'SAFE_DIVIDE(SUM(position * impressions), SUM(impressions)) AS position',
+    );
+  });
+
+  it('caps the row limit', () => {
+    expect(rankHeatmapSql('`t`', 'WHERE 1=1', 'page', 'count', 99999)).toContain('LIMIT 1000');
   });
 });

@@ -14,6 +14,8 @@ import type {
   EntityRow,
   Kpi,
   MoverRow,
+  RankHeatmap,
+  RankRow,
   ScatterRow,
   TsPoint,
 } from '../api';
@@ -192,6 +194,51 @@ export function demoBuckets(): BucketRow[] {
   }));
 }
 
+/**
+ * Rank distribution for the demo client. Deliberately lopsided — each entity peaks in a different
+ * bucket with a long tail — so the sample report shows the average being contradicted rather than a
+ * tidy single peak.
+ */
+export function demoRankHeatmap(dim: 'query' | 'page', weight: RankHeatmap['weight']): RankHeatmap {
+  const buckets = [
+    { key: 'r1', label: '1' },
+    { key: 'r2', label: '2' },
+    { key: 'r3', label: '3' },
+    { key: 'r4_5', label: '4–5' },
+    { key: 'r6_10', label: '6–10' },
+    { key: 'r11_20', label: '11–20' },
+    { key: 'r21_50', label: '21–50' },
+    { key: 'r51', label: '51+' },
+  ];
+  const rnd = seeded(dim === 'page' ? 71 : 67);
+  const scale = weight === 'count' ? 1 : weight === 'clicks' ? 20 : 400;
+  const rows: RankRow[] = (dim === 'page' ? PAGES : QUERIES).map((key, i) => {
+    const peak = i % buckets.length;
+    const cells: Record<string, number> = {};
+    let units = 0;
+    let impressions = 0;
+    let weighted = 0;
+    buckets.forEach((b, j) => {
+      const falloff = Math.exp(-Math.abs(j - peak) / 1.2);
+      const n = Math.round((2 + rnd() * 10) * falloff);
+      units += n;
+      cells[b.key] = Math.round(scale * (weight === 'count' ? n : n * (3 + rnd() * 4)));
+      const impr = Math.round(400 * n * (0.4 + rnd()));
+      impressions += impr;
+      weighted += impr * (j + 1) * 3;
+    });
+    return {
+      key,
+      units,
+      clicks: Math.round(impressions * 0.04),
+      impressions,
+      position: impressions ? Number((weighted / impressions).toFixed(1)) : 0,
+      ...cells,
+    };
+  });
+  return { buckets, weight, unit: dim === 'page' ? 'query' : 'day', rows };
+}
+
 export function demoScatter(): ScatterRow[] {
   const rnd = seeded(53);
   return [...QUERIES, ...PAGES].slice(0, 30).map((key) => {
@@ -305,6 +352,12 @@ export function demoReport(report: string, qs: string): unknown {
       return demoBreakdown(params.get('dim') ?? 'device');
     case 'position-buckets':
       return demoBuckets();
+    case 'rank-heatmap': {
+      const w = params.get('weight');
+      const weight: RankHeatmap['weight'] =
+        w === 'clicks' ? 'clicks' : w === 'impressions' ? 'impressions' : 'count';
+      return demoRankHeatmap(params.get('dim') === 'page' ? 'page' : 'query', weight);
+    }
     case 'ctr-scatter':
       return demoScatter();
     case 'movers':

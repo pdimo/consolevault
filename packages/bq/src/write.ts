@@ -10,7 +10,12 @@ import { BigQuery } from '@google-cloud/bigquery';
 import type { TableMetadata } from '@google-cloud/bigquery';
 import { Storage } from '@google-cloud/storage';
 import { DATASETS, GSC_ROW_SCHEMA, type BqField } from './schema.js';
-import { buildWildcardViewSql, WILDCARD_VIEWS } from './views.js';
+import {
+  buildRankBucketViewSql,
+  buildWildcardViewSql,
+  RANK_BUCKET_VIEWS,
+  WILDCARD_VIEWS,
+} from './views.js';
 import {
   buildNativeByPageViewSql,
   buildNativeByPropertyViewSql,
@@ -450,6 +455,27 @@ export class Warehouse {
   async ensureWildcardView(dataset: string, viewId: string): Promise<void> {
     if (await this.tableExists(DATASETS.views, viewId)) return;
     await this.createOrReplaceView(viewId, buildWildcardViewSql(this.cfg.projectId, dataset));
+    await this.refreshRankBucketViews(viewId);
+  }
+
+  /**
+   * (Re)create the pre-aggregated rank-bucket views derived from the wildcard `_all` views. They're
+   * plain views over a view, so they cost nothing to keep current — but the source has to exist
+   * first, hence this runs after the wildcard views are (re)created rather than on a schedule of its
+   * own. Pass `sourceViewId` to refresh only the views derived from that one source.
+   */
+  async refreshRankBucketViews(sourceViewId?: string): Promise<string[]> {
+    const created: string[] = [];
+    for (const { source, viewId, dim } of RANK_BUCKET_VIEWS) {
+      if (sourceViewId && source !== sourceViewId) continue;
+      if (!(await this.tableExists(DATASETS.views, source))) continue;
+      await this.createOrReplaceView(
+        viewId,
+        buildRankBucketViewSql(this.cfg.projectId, source, dim),
+      );
+      created.push(viewId);
+    }
+    return created;
   }
 
   /**
@@ -476,6 +502,8 @@ export class Warehouse {
       );
       created.push(viewId);
     }
+    // The rank-bucket views read the wildcard views, so they're rebuilt in the same pass.
+    created.push(...(await this.refreshRankBucketViews()));
     return created;
   }
 

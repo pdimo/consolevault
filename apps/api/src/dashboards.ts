@@ -27,6 +27,7 @@ const REPORTS: ReportName[] = [
   'top-pages',
   'breakdown',
   'position-buckets',
+  'rank-heatmap',
   'ctr-scatter',
   'striking-distance',
   'movers',

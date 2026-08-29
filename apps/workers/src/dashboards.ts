@@ -31,6 +31,16 @@ const cache = new DashboardCache();
 const DAY_TTL = 25 * 60 * 60 * 1000;
 const DEFAULT_Q = { range: '28d', rollup: 'day', searchType: 'web' };
 
+/**
+ * Reports whose default view carries extra params. These must match what the report page requests
+ * on first load exactly — the cache key hashes the whole query string, so a warmed key with fewer
+ * params is a key nothing ever asks for.
+ */
+const REPORT_VARIANTS: Record<string, Record<string, string>[]> = {
+  breakdown: [{ dim: 'device' }, { dim: 'country' }],
+  'rank-heatmap': [{ dim: 'query', weight: 'count' }],
+};
+
 export async function refreshDashboards(): Promise<{ targets: number; warmed: number }> {
   const [properties, groups] = await Promise.all([propertyRepo.list(), groupRepo.list()]);
   const targets = [
@@ -40,7 +50,7 @@ export async function refreshDashboards(): Promise<{ targets: number; warmed: nu
   let warmed = 0;
   for (const t of targets) {
     for (const report of PRECOMPUTE_REPORTS) {
-      const variants = report === 'breakdown' ? [{ dim: 'device' }, { dim: 'country' }] : [{}];
+      const variants = REPORT_VARIANTS[report] ?? [{}];
       for (const v of variants) {
         const q = { ...DEFAULT_Q, ...v };
         const key = cacheKey(

@@ -46,6 +46,28 @@ export interface BucketRow {
   p21_50: number;
   p50plus: number;
 }
+/**
+ * One heatmap row: an entity (query or page) and how its ranking units distribute across the rank
+ * buckets. `position` is the impression-weighted average the buckets exist to contradict — returned
+ * alongside so the two can be compared directly.
+ */
+export interface RankRow {
+  key: string;
+  /** How many units (queries for a page, days for a query) the row is built from. */
+  units: number;
+  clicks: number;
+  impressions: number;
+  position: number;
+  /** One entry per bucket key (`r1`, `r4_5`, …), in whatever `RankHeatmap.weight` names. */
+  [bucket: string]: string | number;
+}
+export interface RankHeatmap {
+  buckets: { key: string; label: string }[];
+  weight: 'count' | 'impressions' | 'clicks';
+  /** What one unit is — a page's units are its queries, a query's are the days it ran. */
+  unit: 'query' | 'day';
+  rows: RankRow[];
+}
 export interface MoverRow {
   key: string;
   clicks: number;
