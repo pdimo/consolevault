@@ -6,7 +6,7 @@
  */
 
 import Fastify from 'fastify';
-import { loadConfig } from '@consolevault/config';
+import { cloudLoggingOptions, loadConfig } from '@consolevault/config';
 import { CollectionError } from '@consolevault/gsc';
 import { discoverAllAccounts, SecretStore } from '@consolevault/store';
 import { Warehouse } from '@consolevault/bq';
@@ -17,7 +17,7 @@ import { tokenHealthSweep } from './health.js';
 import { refreshMaterialized } from './materialize.js';
 import { refreshDashboards } from './dashboards.js';
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: cloudLoggingOptions });
 const config = loadConfig();
 const secretStore = new SecretStore(config.projectId);
 const warehouse = new Warehouse({

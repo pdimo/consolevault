@@ -7,6 +7,7 @@
  */
 
 import { GoogleAuth } from 'google-auth-library';
+import { SettingsRepository } from '@consolevault/store';
 
 const SCOPES = ['https://www.googleapis.com/auth/monitoring'];
 const BASE = 'https://monitoring.googleapis.com/v3';
@@ -84,4 +85,32 @@ export async function ensureAlerting(
     }
   }
   return { channel: channelName, policiesUpdated };
+}
+
+/**
+ * Re-attach the saved alert email to every ConsoleVault policy, without a Settings save.
+ *
+ * {@link ensureAlerting} only ran on Settings save, so an alert policy added by a LATER
+ * `terraform apply` was created with no notification channel and stayed silent until someone
+ * happened to re-save Settings — which is how the dedup-invariant policy sat channel-less from the
+ * day it was added. Running the same idempotent sync at startup means a deploy is enough: it
+ * PATCHes only policies whose channels actually differ, so a warm-start no-op costs two reads.
+ */
+export async function resyncAlerting(
+  projectId: string,
+  logger: { info: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void },
+): Promise<void> {
+  try {
+    const { alertEmail } = await new SettingsRepository().get();
+    // No email configured = alerting deliberately off; nothing to attach.
+    if (!alertEmail) return;
+    const result = await ensureAlerting(projectId, alertEmail);
+    if (result.policiesUpdated > 0) logger.info({ alerting: result }, 'resyncAlerting');
+  } catch (err) {
+    // Never block startup on Monitoring being reachable.
+    logger.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      'resyncAlerting failed',
+    );
+  }
 }

@@ -62,3 +62,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...(stagingBucket !== undefined ? { stagingBucket } : {}),
   };
 }
+
+export * from './logging.js';
