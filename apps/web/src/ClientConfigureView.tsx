@@ -138,9 +138,11 @@ export default function ClientConfigureView() {
             />
           </Field>
           <p className="text-xs text-muted">
-            Comma-separated. A query is <strong>brand</strong> if it contains any term
-            (case-insensitive) — drives the report&apos;s brand/non-brand segment across all this
-            client&apos;s properties. Applied at query time, so edits take effect immediately.
+            Comma-separated, case-insensitive. A query is <strong>brand</strong> when it contains a
+            term as a whole word (plural and possessive included); wrap a term in slashes for a
+            regex — <code>/acme ?co/</code>. Drives the report&apos;s brand/non-brand segment across
+            all this client&apos;s properties. Applied at query time, so edits take effect
+            immediately.
           </p>
         </div>
       </Card>

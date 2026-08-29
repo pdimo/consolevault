@@ -34,6 +34,7 @@ import { FilterChips, type Chip } from './components/report/FilterChips';
 import { MetricDelta } from './components/report/delta';
 import { BreakdownList } from './components/report/BreakdownList';
 import { GroupPanel } from './components/report/GroupPanel';
+import { BrandShare } from './components/report/BrandShare';
 import { useToast } from './components/feedback';
 
 type Range = '28d' | '3mo' | '12mo';
@@ -539,27 +540,6 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
   const gainers = (moversRows ?? []).filter((m) => m.delta > 0).slice(0, 15);
   const losers = (moversRows ?? []).filter((m) => m.delta < 0).slice(0, 15);
 
-  const brandRow = brandSplit?.find((r) => r.segment === 'brand') ?? null;
-  const nonbrandRow = brandSplit?.find((r) => r.segment === 'nonbrand') ?? null;
-  const brandClicks = brandRow?.clicks ?? 0;
-  const nonbrandClicks = nonbrandRow?.clicks ?? 0;
-  const brandShare =
-    brandClicks + nonbrandClicks ? (brandClicks / (brandClicks + nonbrandClicks)) * 100 : 0;
-  const brandCmp = [
-    { label: 'Clicks', b: fmtNum(brandClicks), n: fmtNum(nonbrandClicks) },
-    {
-      label: 'Impressions',
-      b: fmtNum(brandRow?.impressions ?? 0),
-      n: fmtNum(nonbrandRow?.impressions ?? 0),
-    },
-    { label: 'CTR', b: fmtPct(brandRow?.ctr ?? 0), n: fmtPct(nonbrandRow?.ctr ?? 0) },
-    {
-      label: 'Avg position',
-      b: fmtPos(brandRow?.position ?? 0),
-      n: fmtPos(nonbrandRow?.position ?? 0),
-    },
-  ];
-
   return (
     <div>
       {!embedded && (
@@ -854,65 +834,8 @@ export default function Dashboard({ embedded = false }: { embedded?: boolean }) 
         )}
       </Card>
 
-      {/* Brand vs non-brand split */}
-      {hasBrand && (
-        <Card
-          className="mt-5"
-          title="Brand vs non-brand"
-          actions={<Badge tone="accent">{brandShare.toFixed(0)}% brand clicks</Badge>}
-        >
-          {!brandSplit ? (
-            <div className="grid place-items-center py-16 text-muted">
-              <Spinner className="h-6 w-6" />
-            </div>
-          ) : brandSplit.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted">No data for this period.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              <div className="overflow-hidden rounded-lg border border-line">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-surface-2 text-muted">
-                      <th className="px-3 py-2 text-left font-medium">Metric</th>
-                      <th className="px-3 py-2 text-right font-medium">Brand</th>
-                      <th className="px-3 py-2 text-right font-medium">Non-brand</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {brandCmp.map((row) => (
-                      <tr key={row.label} className="border-t border-line">
-                        <td className="px-3 py-2 text-muted">{row.label}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{row.b}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{row.n}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
-                  Clicks over time
-                </p>
-                {brandTrend && brandTrend.length > 0 ? (
-                  <StackedArea
-                    data={brandTrend as unknown as Record<string, unknown>[]}
-                    xKey="date"
-                    height={200}
-                    series={[
-                      { key: 'brand', name: 'Brand', color: 'var(--accent)' },
-                      { key: 'nonbrand', name: 'Non-brand', color: 'var(--muted)' },
-                    ]}
-                  />
-                ) : (
-                  <div className="grid place-items-center py-16 text-muted">
-                    <Spinner className="h-5 w-5" />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
+      {/* Share of branded search — trend-first (see BrandShare). */}
+      {hasBrand && <BrandShare className="mt-5" split={brandSplit} trend={brandTrend} />}
 
       {/* Topic clusters + Content groups — auto-derived when none are saved; click to filter. */}
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">

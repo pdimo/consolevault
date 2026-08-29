@@ -287,9 +287,12 @@ export default function Property({ embedded = false }: { embedded?: boolean }) {
         <div className="mt-5">
           <p className="mb-1 text-sm font-semibold">Brand terms</p>
           <p className="mb-2 text-xs text-muted">
-            Comma-separated. A query is <strong>brand</strong> if it contains any term
-            (case-insensitive) — used by the dashboard&apos;s brand/non-brand segment and split.
-            Applied at query time, so edits take effect immediately with no reprocessing.
+            Comma-separated, case-insensitive. A query is <strong>brand</strong> when it contains a
+            term as a whole word (plural and possessive included), so &ldquo;adt&rdquo; matches
+            &ldquo;adt alarms&rdquo; but not &ldquo;adtran&rdquo;. Wrap a term in slashes for a
+            regex — <code>/adt ?security/</code>. Used by the dashboard&apos;s brand/non-brand
+            segment and the share-of-branded-search widget. Applied at query time, so edits take
+            effect immediately with no reprocessing.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <TextInput

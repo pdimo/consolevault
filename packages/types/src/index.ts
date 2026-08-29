@@ -152,9 +152,11 @@ export interface Property {
   /** Opt-in: surface an analytics dashboard for this property (Dashboards section). */
   dashboardEnabled?: boolean;
   /**
-   * Brand terms for query classification (brand vs non-brand). A query is "brand" if it contains
-   * any term (case-insensitive substring). Applied at QUERY time — never baked into collected rows —
-   * so edits take effect instantly with no reprocessing. First instance of a general "segment".
+   * Brand terms for query classification (brand vs non-brand). Terms compile to one case-insensitive
+   * regex: a plain term matches as a whole word (plus a plural/possessive), and a term wrapped in
+   * slashes (`/adt ?security/`) is used as a regex verbatim. Applied at QUERY time — never baked into
+   * collected rows — so edits take effect instantly with no reprocessing. First instance of a general
+   * "segment".
    */
   brandTerms?: string[];
   /** Owning client (IA v2). Every tracked property belongs to exactly one client. */

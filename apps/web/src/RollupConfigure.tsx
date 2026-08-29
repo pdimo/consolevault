@@ -107,8 +107,10 @@ export default function RollupConfigure() {
           <div>
             <p className="mb-1 text-sm font-semibold">Brand terms</p>
             <p className="mb-2 text-xs text-muted">
-              Comma-separated. Drives the brand/non-brand split across the rollup — applied at query
-              time, so edits take effect immediately.
+              Comma-separated, case-insensitive. Each term matches as a whole word (plural and
+              possessive included); wrap a term in slashes for a regex — <code>/acme ?co/</code>.
+              Drives the brand/non-brand split across the rollup — applied at query time, so edits
+              take effect immediately.
             </p>
             <TextInput
               className="w-full"
