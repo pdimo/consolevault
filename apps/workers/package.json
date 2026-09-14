@@ -18,7 +18,7 @@
     "@consolevault/store": "workspace:*",
     "@consolevault/types": "workspace:*",
     "@google-cloud/tasks": "^5.5.0",
-    "fastify": "^5.0.0"
+    "fastify": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0"
