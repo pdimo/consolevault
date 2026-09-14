@@ -17,6 +17,6 @@
     "@consolevault/store": "workspace:*",
     "@consolevault/types": "workspace:*",
     "google-auth-library": "^10.5.0",
-    "open": "^10.1.0"
+    "open": "^11.0.0"
   }
 }
